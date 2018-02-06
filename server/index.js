@@ -25,7 +25,7 @@ app.get('/', (request, response) => {
 })
 
 // Add a new user to the queue -- user_id, number_players
-app.post("/addToQueue", (request, response) => {
+app.post("/queue/add", (request, response) => {
 
 	var user_id = request.body.user_id;
 	var number_players = request.body.num_players;
