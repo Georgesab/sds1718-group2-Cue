@@ -3,6 +3,7 @@ const bodyParser = require('body-parser');
 const app = express();
 const port = 4000;
 
+/*
 // Database
 var SQL = require("mysql");
 var connection = SQL.createConnection({
@@ -11,9 +12,10 @@ var connection = SQL.createConnection({
 	password: 'rosecolouredboy',
 	database: 'cue'
 });
+*/
 
 // Connect to the database
-connection.connect();
+//connection.connect();
 
 // Misc
 app.use(bodyParser.urlencoded({ extended: false }));
