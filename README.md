@@ -1,4 +1,7 @@
 # IDK SDS - node.js Server + DB
+
+------
+
 Server that provides endpoints to modify a mySQL database on the hosting machine.
 
 ## HTTP Endpoints
@@ -54,6 +57,10 @@ If **num_records** not specified, returns all.
 | Key          | Format | Example Value |
 | ------------ | ------ | ------------- |
 | num_records* | Int    | 111           |
+
+#### ~~GET /queue/wait~~ PLACEHOLDER FOR JON
+
+Returns the current average waittime. 
 
 ### POST Requests
 

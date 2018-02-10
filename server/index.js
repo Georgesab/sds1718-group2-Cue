@@ -79,54 +79,6 @@ app.get('/queue', (request,response, next) => {
 			console.log(print);
 		}
 	});
-
-	/*
-	switch(mode) {
-
-		// All users
-		case 1:
-		connection.query(sql, (err, result, fields) => {
-			if (err) {
-				next(err);
-			}
-			else {
-				response.send(result);
-				console.log("GET /queue: Served ALL users");
-			}
-		});
-		break;
-
-		// Played only
-		case 2:
-		connection.query("SELECT * FROM `users` WHERE " + inq + " = 0", (err, result, fields) => {
-			if (err) {
-				next(err);
-			}
-			else {
-				response.send(result);
-				console.log("GET /queue: Served users who have PLAYED/not in queue");
-			}
-		});
-		break;
-
-		// Not played only
-		case 3:
-		connection.query("SELECT * FROM `users` WHERE " + inq + " = 1", (err, result, fields) => {
-			if (err) {
-				next(err);
-			}
-			else {
-				response.send(result);
-				console.log("GET /queue: Served users who have NOT PLAYED/in queue");
-			}
-		});
-		break;
-
-		default:
-		console.log("Error, cannot GET");
-		response.sendStatus(404);
-		break;
-		*/
 })
 
 // Get an individual user
@@ -151,7 +103,7 @@ app.get('/queue/user', (request, response, next) => {
 })
 
 // Get the current queue and all users in the queue
-app.get('/queue/completedTimes', (request,response, next) => {
+app.get('/queue/completedTimes', (request, response, next) => {
 
 	// How many records to return
 	var number_to_return = parseInt(request.query.num_records);
@@ -173,6 +125,11 @@ app.get('/queue/completedTimes', (request,response, next) => {
 			console.log("GET /queue/completedTimes: Returned last " + number_to_return + " user times");
 		}
 	})
+})
+
+app.get('/queue/wait', (request, response, next) => {
+	response.sendStatus(404);
+	console.log("GET /queue/wait: Not configured yet.");
 })
 
 ///////////////////////////////////////////////// POST REQUESTS
