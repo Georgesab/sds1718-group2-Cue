@@ -1,5 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const basicAuth = require('basic-auth');
 const app = express();
 const port = 4000;
 
@@ -239,9 +240,6 @@ app.delete('/users/delete', (request, response, next) => {
   })
 
 ///////////////////////////////////////////////// MISC
-
-
-var basicAuth = require('basic-auth');
  
 var auth = function (req, res, next) {
   var user = basicAuth(req);
