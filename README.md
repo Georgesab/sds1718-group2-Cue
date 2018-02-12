@@ -58,15 +58,15 @@ If **num_records** not specified, returns all.
 | ------------ | ------ | ------------- |
 | num_records* | Int    | 111           |
 
-#### ~~GET /queue/wait~~ PLACEHOLDER FOR JON
+#### GET /queue/wait
 
-Returns the current average waittime. 
+Returns the current average wait time.
 
 ### POST Requests
 
 #### POST /queue/add
 
-Add a user to the queue. 
+Add a user to the queue.
 
 **queue_pos** will default to the next available.
 
@@ -89,7 +89,7 @@ Add a user to the queue.
 
 ### PUT Requests
 
-#### PUT /users/status/[start | end] 
+#### PUT /users/status/[start | end]
 
 Adds the current time to either **time_game_start** or **time_game_end**.
 
@@ -138,6 +138,12 @@ When in /server folder, run:
 sudo ./setupdb.sh cue
 ```
 
+run:
+```BASH
+sudo ./insert-test.sh
+```
+To make two dummy users and add them to the USERS table.
+
 ## Running Server
 `node index.js`
 
@@ -155,6 +161,3 @@ sudo ./setupdb.sh cue
 | in_queue          | TINYINT (0 for false, 1 for true) |
 | number_of_players | INT                               |
 | account_balance   | DECIMAL ???                       |
-
-
-
