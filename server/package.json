@@ -1,6 +1,6 @@
 {
   "name": "sds_idk",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "SDS",
   "main": "index.js",
   "scripts": {
@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/Georgesab/idk#readme",
   "dependencies": {
+    "basic-auth": "^2.0.0",
     "body-parser": "^1.18.2",
     "express": "^4.16.2",
     "knex": "^0.14.2",
