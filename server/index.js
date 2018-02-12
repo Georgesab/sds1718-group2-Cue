@@ -108,7 +108,7 @@ app.get('/queue/completedTimes', (request, response, next) => {
 
 	// How many records to return
 	var number_to_return = parseInt(request.query.num_records);
-	
+
 	var sql = "SELECT " + t_add + "," + t_gstart + "," + t_gend + " FROM USERS WHERE " + inq + "= 0 ORDER BY " + t_gend;
 
 	if(number_to_return < 0) {
@@ -128,9 +128,23 @@ app.get('/queue/completedTimes', (request, response, next) => {
 	})
 })
 
+//Get the current average waiting time for a table
 app.get('/queue/wait', (request, response, next) => {
-	response.sendStatus(404);
-	console.log("GET /queue/wait: Not configured yet.");
+
+	var sql = "SELECT SEC_TO_TIME(AVG(TIME_TO_SEC(TIMEDIFF("
+	+ t_gstart + "," + t_add
+	+")))) AS WAITING_TIME FROM USERS";
+	sql = SQL.format(sql);
+
+	connection.query(sql, (err, result, fields) => {
+		if(err) {
+			next(err);
+		}
+		else {
+			response.send(result);
+			console.log("GET /queue/wait: returned the average waiting time");
+		}
+	})
 })
 
 ///////////////////////////////////////////////// POST REQUESTS
@@ -214,7 +228,7 @@ app.delete('/users/delete', (request, response, next) => {
 
 	// Reduce queue position by 1 for all items after deleted // only adjusts for those currently in queue
 	connection.query(sql, (err,result) => {
-		if(err) { 
+		if(err) {
 			next(err)
 		}
 		else {
@@ -240,7 +254,7 @@ app.delete('/users/delete', (request, response, next) => {
   })
 
 ///////////////////////////////////////////////// MISC
- 
+
 var auth = function (req, res, next) {
   var user = basicAuth(req);
   if (!user || !user.name || !user.pass) {
@@ -258,7 +272,7 @@ var auth = function (req, res, next) {
 }
 
 app.all("/config/*", auth);
- 
+
 app.get("/config", function (req, res) {
 	res.send("CONFIG PAGE FOR THE SERVER/DATABASE");
 	console.log("GET: Served dummy authentication page");
