@@ -34,7 +34,7 @@ app.get('/queue/pos', (request, response, next) => {
 
 	var user_id = parseInt(request.query.user_id);
 
-	var sql = "SELECT * FROM GAME WHERE user_id = ?"
+	var sql = "SELECT queue_pos FROM GAME WHERE user_id = ?"
 	sql = SQL.format(sql, user_id);
 
 	connection.query(sql, (err, result, fields) => {
