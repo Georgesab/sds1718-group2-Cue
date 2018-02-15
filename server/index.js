@@ -35,7 +35,7 @@ app.get('/queue/pos', (request, response, next) => {
 	var user_id = parseInt(request.query.user_id);
 
 	var sql = "SELECT * FROM MACHINE WHERE venue_id = ?"
-	sql = SQL.format(sql, pub_id);
+	sql = SQL.format(sql, user_id);
 
 	connection.query(sql, (err, result, fields) => {
 		if(err) {
@@ -43,7 +43,7 @@ app.get('/queue/pos', (request, response, next) => {
 		}
 		else {
 			response.send(result);
-			console.log("GET /venue/machines: returned all the machines in this pub.");
+			console.log("GET /queue/pos: returned position");
 		}
 	})
 })
