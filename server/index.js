@@ -8,10 +8,10 @@ const port = 4000;
 var SQL = require("mysql");
 var connection = SQL.createConnection({
 	host	: '127.0.0.1',
-	user	: 'root',
-	password: '',
+	user	: 'blockchain',
+	password: 'rosecolouredboy',
 	multipleStatements: true,
-	database: 'sds'
+	database: 'SDS1'
 });
 
 // Connect to the database
@@ -32,7 +32,7 @@ app.get('/', (request, response) => {
 // Get queue position
 app.get('/queue/pos', (request, response, next) => {
 
-	var user_id = parseInt(request.query.pub_id);
+	var user_id = parseInt(request.query.user_id;
 
 	var sql = "SELECT * FROM MACHINE WHERE venue_id = ?"
 	sql = SQL.format(sql, pub_id);
