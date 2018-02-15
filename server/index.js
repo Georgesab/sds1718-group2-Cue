@@ -9,20 +9,10 @@ var SQL = require("mysql");
 var connection = SQL.createConnection({
 	host	: '127.0.0.1',
 	user	: 'root',
-	password: 'rosecolouredboy',
-	database: 'cue'
+	password: '',
+	multipleStatements: true,
+	database: 'sds'
 });
-
-//// Hard coded field names
-var uid = "user_id";
-var qpos = "queue_pos";
-var t_add = "time_add_queue";
-var t_gstart = "time_game_start";
-var t_gend = "time_game_end";
-var inq = "in_queue";
-var nump = "num_players";
-var bal = "account_balance";
-
 
 // Connect to the database
 connection.connect();
@@ -39,102 +29,13 @@ app.get('/', (request, response) => {
 	console.log("GET: Served /public/index.html");
 })
 
-// Get the current queue and all users in the queue
-app.get('/queue', (request,response, next) => {
+// Get queue position
+app.get('/queue/pos', (request, response, next) => {
 
-	// What user to grab
-	var mode = parseInt(request.query.mode);
-	var number_to_return = parseInt(request.query.num);
-	var sql;
-	var print;
+	var user_id = parseInt(request.query.pub_id);
 
-	switch(mode) {
-
-		case 1:
-			sql = "SELECT * FROM `USERS`";
-			print = "GET /queue: Served ALL users"
-			break;
-		case 2:
-			sql = "SELECT * FROM `users` WHERE " + inq + " = 0";
-			print = "GET /queue: Served users who have PLAYED/not in queue";
-			break;
-		case 3:
-			sql = "SELECT * FROM `users` WHERE " + inq + " = 1";
-			print = "GET /queue: Served users who have NOT PLAYED/in queue";
-			break;
-		default:
-			console.log("Missing mode field");
-			return next(new Error("Missing 'mode' field"));
-	}
-
-	if(number_to_return > 0) {
-		sql = sql + " LIMIT " + number_to_return;
-	}
-
-	connection.query(sql, (err, result, fields) => {
-		if (err) {
-			next(err);
-		}
-		else {
-			response.send(result);
-			console.log(print);
-		}
-	});
-})
-
-// Get an individual user
-app.get('/queue/user', (request, response, next) => {
-
-	// What user to grab
-	var user_to_get = parseInt(request.query.uid);
-
-	var sql = "SELECT * FROM USERS WHERE " + uid + " = ?";
-	sql = SQL.format(sql, user_to_get);
-
-	connection.query(sql, (err, result, fields) => {
-		if(err) {
-			next(error);
-		}
-		else {
-			response.send(result);
-			console.log("GET /queue/user: Returned user '" + user_to_get + "'");
-		}
-	})
-
-})
-
-// Get the current queue and all users in the queue
-app.get('/queue/completedTimes', (request, response, next) => {
-
-	// How many records to return
-	var number_to_return = parseInt(request.query.num_records);
-
-	var sql = "SELECT " + t_add + "," + t_gstart + "," + t_gend + " FROM USERS WHERE " + inq + "= 0 ORDER BY " + t_gend;
-
-	if(number_to_return < 0) {
-		sql = sql + " LIMIT " + number_to_return;
-	}
-
-	sql = SQL.format(sql, number_to_return);
-
-	connection.query(sql, (err, result, fields) => {
-		if (err) {
-			next(err);
-		}
-		else {
-			response.send(result);
-			console.log("GET /queue/completedTimes: Returned last " + number_to_return + " user times");
-		}
-	})
-})
-
-//Get the current average waiting time for a table
-app.get('/queue/wait', (request, response, next) => {
-
-	var sql = "SELECT SEC_TO_TIME(AVG(TIME_TO_SEC(TIMEDIFF("
-	+ t_gstart + "," + t_add
-	+")))) AS WAITING_TIME FROM USERS";
-	sql = SQL.format(sql);
+	var sql = "SELECT * FROM MACHINE WHERE venue_id = ?"
+	sql = SQL.format(sql, pub_id);
 
 	connection.query(sql, (err, result, fields) => {
 		if(err) {
@@ -142,21 +43,44 @@ app.get('/queue/wait', (request, response, next) => {
 		}
 		else {
 			response.send(result);
-			console.log("GET /queue/wait: returned the average waiting time");
+			console.log("GET /venue/machines: returned all the machines in this pub.");
+		}
+	})
+})
+
+// Get all machines for a particular venue
+app.get('/venue/machines', (request, response, next) => {
+
+	var pub_id = parseInt(request.query.pub_id);
+
+	var sql = "SELECT * FROM MACHINE WHERE venue_id = ?"
+	sql = SQL.format(sql, pub_id);
+
+	connection.query(sql, (err, result, fields) => {
+		if(err) {
+			next(err);
+		}
+		else {
+			response.send(result);
+			console.log("GET /venue/machines: returned all the machines in this pub.");
 		}
 	})
 })
 
 ///////////////////////////////////////////////// POST REQUESTS
 
-// Add a new user to the queue -- user_id, number_players
-app.post("/queue/add", (request, response, next) => {
+// Add a new user to the service
+app.post("/user/add", (request, response, next) => {
 
-	var user_id = parseInt(request.body.uid);
-	var number_players = parseInt(request.body.num_players);
+	// USER ID IS AUTO-GENERATED
+	//var user_id = parseInt(request.body.user_id);
+	var username = request.body.username;
+	var password = request.body.password;
+	var name = request.body.name;
+	//// TBA -- ADD HASHING AND SALTING
 
-	var sql = "INSERT INTO `USERS` (user_id, time_add_queue, number_players, queue_pos) VALUES (?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM `USERS`) AS bob)+1)";
-	var inserts = [user_id, new Date(), number_players];
+	var sql = "INSERT INTO `USERS` (username, password, name) VALUES (?, ?, ?)";
+	var inserts = [username, password, name];
 	sql = SQL.format(sql, inserts);
 
 	connection.query(sql, (err, result) => {
@@ -166,20 +90,21 @@ app.post("/queue/add", (request, response, next) => {
 		else {
 			// Send 200 status back
 			response.sendStatus(200);
-			console.log("POST /queue/add: User '" + user_id + "' added to queue!");
+			console.log("POST /user/add: Added to queue");
 		}
 	});
 })
 
-///////////////////////////////////////////////// PUT REQUESTS -- streamline this
-
-// Sets the game start time of particular user
-app.put("/users/status/start", (request, response, next) => {
+// Start a new GAME request in the queue
+app.post("/game/add", (request, response, next) => {
 
 	var user_id = parseInt(request.body.uid);
+	var number_players = parseInt(request.body.number_players);
+	var machine_id = parseInt(request.body.machine_id);
+	var matchmaking = parseInt(request.body.matchmaking);
 
-	var sql = "UPDATE `USERS` SET " + t_gstart + " = ? WHERE user_id = ?;";
-	var inserts = [new Date(), user_id];
+	var sql = "INSERT INTO `GAME` (user_id, time_add, number_players, machine_id, matchmaking) VALUES (?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM `USERS`) AS bob)+1)";
+	var inserts = [user_id, new Date(), number_players, matchmaking];
 	sql = SQL.format(sql, inserts);
 
 	connection.query(sql, (err, result) => {
@@ -189,18 +114,24 @@ app.put("/users/status/start", (request, response, next) => {
 		else {
 			// Send 200 status back
 			response.sendStatus(200);
-			console.log("Set start_game_time of '" + user_id + "' to now");
+			console.log("POST /game/add: User '" + user_id + "' added to queue!");
 		}
 	});
 })
 
-// Sets game end time of particular user + sets in_queue to 0
-app.put("/users/status/end", (request, response, next) => {
+///////////////////////////////////////////////// PUT REQUESTS
 
-	var user_id = parseInt(request.body.uid);
+// Sets a user to currently playing a game
+app.put("/game/status/start", (request, response, next) => {
 
-	var sql = "UPDATE `USERS` SET " + t_gend + " = ?, " + inq + "= 0 WHERE user_id = ?;";
-	var inserts = [new Date(), user_id];
+	var user_id = parseInt(request.body.user_id);
+	var game_id = parseInt(request.body.game_id);
+
+	var sql = "UPDATE `GAME` SET " + time_start + " = ?, queue_pos = 0 WHERE user_id = ? AND game_id = ?;";
+	
+	// ALSO NEED TO UPDATE QUEUE
+	
+	var inserts = [[new Date(), user_id, game_id]];
 	sql = SQL.format(sql, inserts);
 
 	connection.query(sql, (err, result) => {
@@ -210,48 +141,32 @@ app.put("/users/status/end", (request, response, next) => {
 		else {
 			// Send 200 status back
 			response.sendStatus(200);
-			console.log("Set end_game_time of '" + user_id + "' to now");
+			console.log("Set time_start of '" + user_id + "' to now");
 		}
 	});
 })
 
-///////////////////////////////////////////////// DELETE REQUESTS
+// Sets a user to having finished a game
+app.put("/game/status/end", (request, response, next) => {
 
-// Delete an item from the queue
-app.delete('/users/delete', (request, response, next) => {
+	var user_id = parseInt(request.body.user_id);
+	var game_id = parseInt(request.body.game_id);
 
-	// Get the user ID to delete
-	var user_to_delete = request.body.uid;
+	var sql = "UPDATE `GAME` SET " + time_end + " = ?, queue_pos = -1 WHERE user_id = ? AND game_id = ?;";
+	var inserts = [[new Date(), user_id, game_id]];
+	sql = SQL.format(sql, inserts);
 
-	var sql = "UPDATE `USERS` SET queue_pos = queue_pos-1 WHERE queue_pos > (SELECT queue_pos FROM ((SELECT * FROM `users`) AS queue_del) WHERE user_id = ?) && " + inq + "= 1;"
-	sql = SQL.format(sql, user_to_delete);
-
-	// Reduce queue position by 1 for all items after deleted // only adjusts for those currently in queue
-	connection.query(sql, (err,result) => {
+	connection.query(sql, (err, result) => {
 		if(err) {
-			next(err)
+			next(err);
 		}
 		else {
-			console.log("Adjusted queue positions");
-
-
-			// Delete user from queue
-			connection.query("DELETE FROM `USERS` WHERE user_id = (?)", user_to_delete, (err,result) => {
-			if (err) {
-				next(err);
-			}
-			else {
-				// Send 200 status
-				response.sendStatus(200);
-				console.log("Deleted user '" + user_to_delete + "'");
-			}
-		});
-
+			// Send 200 status back
+			response.sendStatus(200);
+			console.log("Set end_time of '" + user_id + "' to now");
 		}
 	});
-
-
-  })
+})
 
 ///////////////////////////////////////////////// MISC
 
