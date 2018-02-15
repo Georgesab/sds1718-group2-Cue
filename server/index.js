@@ -32,7 +32,7 @@ app.get('/', (request, response) => {
 // Get queue position
 app.get('/queue/pos', (request, response, next) => {
 
-	var user_id = parseInt(request.query.user_id;
+	var user_id = parseInt(request.query.user_id);
 
 	var sql = "SELECT * FROM MACHINE WHERE venue_id = ?"
 	sql = SQL.format(sql, pub_id);
