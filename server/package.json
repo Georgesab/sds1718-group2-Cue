@@ -18,6 +18,7 @@
   "homepage": "https://github.com/Georgesab/idk#readme",
   "dependencies": {
     "basic-auth": "^2.0.0",
+    "bcrypt": "^1.0.3",
     "body-parser": "^1.18.2",
     "express": "^4.16.2",
     "knex": "^0.14.2",

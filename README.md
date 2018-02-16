@@ -70,6 +70,15 @@ Returns all the machines that a particular venue has.
 
 ## POST Requests
 
+### POST /user/login
+
+Verify a user's credentials against those stored in the server.
+
+| Key		| Format	| Explanation	|
+| -------------	| ------------- | ------------- |
+| Username	| String (16)	|		|
+| Password	| String (24)	|		|
+
 ### POST /user/add
 
 Add a user to the service.
@@ -164,7 +173,7 @@ sudo ./insert-test.sh
 | ------------ | ---------------- |
 | user_id      | INT (> 0)        |
 | username     | VARCHAR(16)      |
-| Password     | VARCHAR(24)      |
+| Password     | VARCHAR(256)     |
 | name         | VARCHAR(40)      |
 | games_played | SMALLINT (>= 0)  |
 | games_missed | SMALLINT (>=  0) |
@@ -181,8 +190,8 @@ sudo ./insert-test.sh
 | time_start     | DATETIME    |
 | time_end       | DATETIME    |
 | num_players    | INT (> 0)   |
-| machine_id     | INT			|
-| matchmaking 		| SMALLINT		|
+| machine_id 	 | INT		|
+| matchmaking	 | SMALLINT	|
 
 ### MACHINE
 

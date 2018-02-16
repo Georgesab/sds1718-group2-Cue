@@ -1,8 +1,25 @@
+
+ 
+var https = require('https');
+var fs = require('fs');
+var forceSsl = require('express-force-ssl');
+
+var bcrypt = require('bcrypt');
+const saltRounds = 10;
+const plain = "helloWorld";
+const plain2 = "worldHello";
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const basicAuth = require('basic-auth');
 const app = express();
-const port = 4000;
+const port = 80;
+
+var options = {
+	key: fs.readFileSync('/etc/letsencrypt/live/idk-cue.club/privkey.pem'),
+	cert: fs.readFileSync('/etc/letsencrypt/live/idk-cue.club/cert.pem'),
+	ca: fs.readFileSync('/etc/letsencrypt/live/idk-cue.club/chain.pem')
+};
 
 // Database
 var SQL = require("mysql");
@@ -20,6 +37,7 @@ connection.connect();
 // Misc
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
+app.use(forceSsl);
 
 ///////////////////////////////////////////////// GET REQUESTS
 
@@ -27,9 +45,12 @@ app.use(bodyParser.json());
 app.get('/', (request, response) => {
 	response.sendFile('/index.html', {root: 'public'});
 	console.log("GET: Served /public/index.html");
+
+	if(err) console.log(err);
+
 })
 
-// Get queue position
+// Get queue position of a particular user
 app.get('/queue/pos', (request, response, next) => {
 
 	var user_id = parseInt(request.query.user_id);
@@ -43,7 +64,7 @@ app.get('/queue/pos', (request, response, next) => {
 		}
 		else {
 			response.send(result);
-			console.log("GET /queue/pos: returned position");
+			console.log("GET /queue/pos: returned position of user " + user_id);
 		}
 	})
 })
@@ -69,6 +90,50 @@ app.get('/venue/machines', (request, response, next) => {
 
 ///////////////////////////////////////////////// POST REQUESTS
 
+// Allow a user to login -- currently checks the login details
+app.post("/user/login", (request, response, next) => {
+
+	var username = request.body.username;
+	var password = request.body.password;
+
+	var sql = "SELECT password FROM USER WHERE username = ?";
+	var inserts = [username];
+	sql = SQL.format(sql, inserts); 
+
+	connection.query(sql, (err, result, fields) => {
+		//console.log(result[0].password);
+		//console.log();
+
+		if(err) {
+			next(err);
+		}
+		else {
+
+			bcrypt.compare(password, result[0].password, (err, res) => {
+				console.log(res);
+
+				if(res) {
+					response.sendStatus(200);
+				}
+				else {
+					response.sendStatus(401);
+				}
+			})
+		}
+
+	})
+
+	/*
+	// NEED TO GET THE HASH SOMEHOW
+	bcrypt.compare(password, hash, (err, res) => {
+		
+	})
+	*/
+
+	// DO SOME CHECKING LOGIC
+
+})
+
 // Add a new user to the service
 app.post("/user/add", (request, response, next) => {
 
@@ -77,10 +142,35 @@ app.post("/user/add", (request, response, next) => {
 	var username = request.body.username;
 	var password = request.body.password;
 	var name = request.body.name;
-	//// TBA -- ADD HASHING AND SALTING
 
-	var sql = "INSERT INTO `USERS` (username, password, name) VALUES (?, ?, ?)";
-	var inserts = [username, password, name];
+	var pwhash;
+
+	// HASH PASSWORD
+	bcrypt.hash(password, saltRounds, function(err, hash) {
+		if(err) console.log(err);
+		
+		var sql = "INSERT INTO `USER` (username, password, name) VALUES (?,?,?)";
+		var inserts = [username, hash, name];
+		sql = SQL.format(sql, inserts);
+
+		connection.query(sql, (err, result) => {
+	
+			if(err) {
+				next(err);
+			}
+			else {
+				response.sendStatus(200);
+				console.log("ok...");
+			}
+
+		});
+
+	});
+
+	//// TBA -- ADD HASHING AND SALTING
+	/* 
+	var sql = "INSERT INTO `USER` (u/sername, password, name) VALUES (?, ?, ?)";
+	var inserts = [username, bob, name];
 	sql = SQL.format(sql, inserts);
 
 	connection.query(sql, (err, result) => {
@@ -93,6 +183,8 @@ app.post("/user/add", (request, response, next) => {
 			console.log("POST /user/add: Added to queue");
 		}
 	});
+
+	*/
 })
 
 // Start a new GAME request in the queue
@@ -186,7 +278,7 @@ var auth = function (req, res, next) {
   }
 }
 
-app.all("/config/*", auth);
+app.all("/config*", auth);
 
 app.get("/config", function (req, res) {
 	res.send("CONFIG PAGE FOR THE SERVER/DATABASE");
@@ -215,3 +307,5 @@ app.use(function(error, request, response, next) {
 	response.status(500).send(error.message);
 
 });
+
+https.createServer(options, app).listen(443);
