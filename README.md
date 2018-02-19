@@ -1,12 +1,33 @@
-# IDK SDS - node.js Server + mariaDB Database
+IDK SDS - node.js Server + mariaDB Database
 
-# Endpoints
+# Server Details
+
+### Server
+
+`pm2 stop index` - Stop the background server
+
+`pm2 start index` - Restart the background server.
+
+`nodemon index.js` - Run from idk/server/ to run the server that restarts every time you save index.js. Use ctrl+c to quit.
+
+### Database
+
+**mysql**
+​	<u>username</u>: blockchain
+​	<u>password</u>: rosecolouredboy
+​	<u>database</u>: SQL1
+
+# HTTP Endpoints
 
 Server that provides endpoints to modify a mariaDB database on the hosting machine.
 
 Note: all body requests should use **x-www-form-urlencoded**
 
-'*' = optional
+## TO ADD
+
+* POST - Add type of machine
+* PUT - Edit number of machines/pricing
+* DELETE - Delete machines
 
 ## GET Requests
 
@@ -22,161 +43,170 @@ Each page in this section requires basic authentication, currently hardcoded.
 
 **User**: idk, **Password**: blockchain
 
-### GET /queue/pos
+### GET /queue
 
-Returns the position in the queue of a specific user.
+Get all games or a specific game currently in the queue.
 
-###### **Parameters**
+**Query Parameters**
 
-| Key     | Format | Explanation                  |
-| ------- | ------ | ---------------------------- |
-| user_id | Int    | User ID of the specific user |
+| Key        | Format | Description                                                  |
+| ---------- | ------ | ------------------------------------------------------------ |
+| venue_id   | int    | ID of specific venue                                         |
+| machine_id | int    | Type of machine to look for.<br />[IF 0, SHOW ALL]           |
+| user_id    | int    | User ID to request queue for<br />[IF 0, SHOW ALL FOR VENUE] |
 
-###### **Return value**
+**Return Value**
 
-| Key       | Format | Explanation                                                  |
-| --------- | ------ | ------------------------------------------------------------ |
-| queue_pos | Int    | Position in the queue.<br />**-1** if not in queue.<br />**0** if currently playing a game. |
+GAME object(s)
 
-### GET /venue/machines
+### GET /machine/price
 
-Returns all the machines that a particular venue has.
+Get current price of a certain machine in a specific venue to show the user.
 
-###### **Parameters**
+**Query Parameters**
 
-| Key    | Format | Explanation                     |
-| ------ | ------ | ------------------------------- |
-| pub_id | Int    | ID for the specfic pub to query |
+| Key          | Format | Description          |
+| ------------ | ------ | -------------------- |
+| venue_id     | int    | ID of specific venue |
+| machine_type | int    | Type of machine      |
 
-###### **Return**
+**Return Value**
 
-| Key           | Format  | Explanation                                |
-| ------------- | :------ | :----------------------------------------- |
-| machine_id    | Int     | ID of the machine                          |
-| venue_id      | Int     | ID of the venue                            |
-| Category      | String  | Category of machine, e.g. "pool"           |
-| total         | Int     | Number of machines the venue has in total. |
-| available     | Int     | Number of machines available for use.      |
-| base_price    | Decimal | Base price of the machine.                 |
-| current_price | Decimal | Current price of the machine.              |
+| Key           | Format | Description                  |
+| ------------- | ------ | ---------------------------- |
+| base_price    | int    | Default price of the machine |
+| current_price | int    | Current price of the machine |
 
-## GET /game/queue
+### GET /machine/all
 
-**TODO** - Get the entire queue for a specific machine.
+Get the list of machines in a specific venue.
 
-### GET /game/queue/wait
+**Query Parameters**
 
-**TODO** - Returns the current average wait time for a specfic queue for a specifc machien.
+| Key      | Format | Description          |
+| -------- | ------ | -------------------- |
+| venue_id | int    | ID of specific venue |
+
+**Return Value**
+MACHINE objects.
+
+### GET /game/waitTime — NOT FUNCTIONAL YET
+
+Returns the current average wait time for a specfic type of machine in a specific venue.
+
+QUESTION - HOW IS THIS CALC???
+
+**Query Parameters**
+
+| Key        | Format | Description          |
+| ---------- | ------ | -------------------- |
+| machine_id | int    | ID of specific venue |
+
+**Return Value**
+MACHINE objects.
+
+NOT IMPLEMENTED YET
 
 ## POST Requests
 
 ### POST /user/login
 
-Verify a user's credentials against those stored in the server.
+Allow a user to login/be authenticated.
 
-| Key		| Format	| Explanation	|
-| -------------	| ------------- | ------------- |
-| Username	| String (16)	|		|
-| Password	| String (24)	|		|
+**Request Body**
+
+| Key       | Format     | Description                |
+| --------- | ---------- | -------------------------- |
+| username  | String(16) | Chosen username            |
+| password  | String(24) | Password                   |
+| device_id | String     | ID of device from Firebase |
+
+**Return Value(s)**
+**200 OK** username/password correct
+
+**401** incorrect username/password
 
 ### POST /user/add
 
-Add a user to the service.
+Add a new user to the service.
 
-###### **Body**
+**Request Body**
 
-| Key      | Format              | Explanation                                                 |
-| -------- | ------------------- | ----------------------------------------------------------- |
-| Username | String (1-16 chars) | Username for the user.                                      |
-| password | String (1-24 chars) | Password for the user (will be hashed in a later iteration) |
-| name     | String (1-40 chars) | First name of the user.                                     |
+| Key       | Format     | Description                     |
+| --------- | ---------- | ------------------------------- |
+| username  | String(16) | Chosen username                 |
+| password  | String(24) | Password (stored as hash in DB) |
+| name      |            | First name of user              |
+| device_id | String     |                                 |
 
-### POST /game/add
+**Return Value(s)**
+MACHINE object.
 
-Add a new game into the queue.
+### POST /queue/add
 
-###### **Body**
+Add a user to the queue — i.e. a user wants to play a game.
 
-| Key            | Format | Explanation                                                  |
-| -------------- | ------ | ------------------------------------------------------------ |
-| user_id        | Int    | User ID of the specific user                                 |
-| number_players | Int    | Number of players user is requesting for (used in extention) |
-| machine_id     | Int    | ID of the machine the user wants to queue for.               |
-| matchmaking    | Int    | **0** = user doesn't need matchmaking<br />**1** = user wants matchmaking |
+**Request Body**
+
+| Key            | Format   | Description                                                  |
+| -------------- | -------- | ------------------------------------------------------------ |
+| user_id        | int      | ID of user                                                   |
+| venue_id       | int      | ID of venue                                                  |
+| machine_id     | int      | Type of machine the user wants to play on                    |
+| time_requested | DATETIME | Time user wants to play. If NULL = ASAP.                     |
+| matchmaking    | int      | If the user wants to be matched.<br />**0** for no, **1** for yes |
+| num_players    | int      | Number of players that are requesting to play.               |
+
+**Return Value(s)**
+
+**200 OK**
+
+## PUT Requests
+
+### POST /queue/gameStart
+
+Confirm the presence of a user/start the game.
+
+**Request Body**
+
+| Key     | Format | Description |
+| ------- | ------ | ----------- |
+| user_id | int    | ID of user  |
+| game_id | int    | ID of game  |
+
+**Return Value(s)**
+
+### POST /queue/gameEnd
+
+Confirm game end.
+
+**Request Body**
+
+| Key     | Format | Description |
+| ------- | ------ | ----------- |
+| user_id | int    | ID of user  |
+| game_id | int    | ID of game  |
+
+**Return Value(s)**
 
 ### POST /machine/add
 
 **TODO** - This will add a machine, e.g. if the pub gets a new category of machine.
 
-## PUT Requests
-
-### PUT /game/status/[start / end]
-
-Use **start** to set the game start time of a player and set their current queue position to in a game.
-
-Use **end** to set the game end time. This puts their queue position to -1 and sets the end time of the game.
-
-###### **Body**
-
-| Key     | Format | Explanation             |
-| ------- | ------ | ----------------------- |
-| user_id | Int    | User ID of the user.    |
-| game_id | Int    | Game to set status for. |
-
-### PUT /machine/
-
-**TODO** - This will allow a pub to edit a machine (e.g. add or remove the number available, edit the price etc)
-
-### PUT /user/
-
-**TODO** - This will allow for updating a user e.g. increasing number of games played/missed.
-**MAYBE** - Allow user to change their username/password.
-
-### PUT /venue/
-
-**MAYBE** - Allow pub to change their name/username/password.
-
-# Setup
-
-#### Server
-
-`cd server`
-
-`npm install`
-
-This installs all required modules needed to run
-
-#### Database
-
-Install mariaDB, set password for 'root' to 'rosecolouredboy' (dummy)
-
-When in /server folder, run:
-
-```BASH
-sudo ./setupdb.sh sds
-```
-
-You can then run the following to populate the database with dummy users:
-```BASH
-sudo ./insert-test.sh
-```
-## Running Server
-`nodemon index.js` to auto-restart
-
 # Database
 
-## Database = 'cue' 
+## Database = 'SDS1' 
 
 ### USER
 
-| Field        | Data Type        |
-| ------------ | ---------------- |
-| user_id      | INT (> 0)        |
-| username     | VARCHAR(16)      |
-| Password     | VARCHAR(256)     |
-| name         | VARCHAR(40)      |
-| games_played | SMALLINT (>= 0)  |
-| games_missed | SMALLINT (>=  0) |
+| Field         | Data Type        |
+| ------------- | ---------------- |
+| user_id       | INT (> 0)        |
+| username      | VARCHAR(16)      |
+| password_hash | VARCHAR(256)     |
+| name          | VARCHAR(40)      |
+| games_played  | SMALLINT (>= 0)  |
+| games_missed  | SMALLINT (>=  0) |
 
 ### GAME
 
@@ -207,9 +237,10 @@ sudo ./insert-test.sh
 
 ### VENUE
 
-| Field    | Data Type   |
-| -------- | ----------- |
-| venue_id | INT (> 0)   |
-| username | VARCHAR(16) |
-| password | VARCHAR(24) |
+| Field      | Data Type   |
+| ---------- | ----------- |
+| venue_id   | INT (> 0)   |
+| venue_name | VARCHAR(40) |
+| username   | VARCHAR(16) |
+| password   | VARCHAR(24) |
 
