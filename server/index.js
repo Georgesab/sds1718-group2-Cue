@@ -42,13 +42,88 @@ app.use(forceSsl);
 ///////////////////////////////////////////////// GET REQUESTS
 
 // GET request -- webpage
-app.get('/', (request, response) => {
+app.get('/', ( request, response, next) => {
 	response.sendFile('/index.html', {root: 'public'});
 	console.log("GET: Served /public/index.html");
 
-	if(err) console.log(err);
+	//if(err) console.log(err);
 
 })
+
+// GET request - queue
+app.get('/queue', (request, response, next) => {
+
+	// If user_id = 0, return all for that venue
+	var venue_id = parseInt(request.query.venue_id);
+	var user_id = parseInt(request.query.user_id);
+
+	var sql = "SELECT G.* FROM GAME G Inner Join MACHINE M on G.machine_id=M.machine_id WHERE venue_id = ?";
+	
+	if(user_id != 0) {
+		sql += " AND user_id = ?;";
+	}
+	else {
+		sql += ";";
+	}
+	
+	var inserts = [venue_id, user_id];
+	sql = SQL.format(sql, inserts); 
+
+	connection.query(sql, (err, result, fields) => {
+		if(err) {
+			next(err);
+		}
+		else {
+			response.send(result);
+			console.log("GET /queue: sent GAME details for venue: " + venue_id + " | user_id: " + user_id);
+		}
+	})
+})
+
+// GET request - see if a table is available
+app.get('/queue/isTableAvailable', (request, response, next) => {
+
+	var venue_id = parseInt(request.query.venue_id);
+	var user_id = parseInt(request.query.user_id);
+
+	var sql = "SELECT G.* FROM GAME G Inner Join MACHINE M on G.machine_id=M.machine_id WHERE venue_id = ?";
+
+	connection.query(sql, (err,result, fields) => {
+		if(err) {
+			next(err);
+		}
+		else {
+			////
+		}
+	})
+	
+
+	// TODO: Implement me 
+
+})
+
+
+// GET request - price of specific machine in specific venue
+app.get('/machine/price', (request, response, next) => {
+
+	var venue_id = parseInt(request.query.venue_id);
+	var machine_type = request.query.machine_type;
+
+	var sql = "SELECT base_price, current_price FROM MACHINE WHERE venue_id = ?, category = ?;"
+	var inserts = [venue_id, machine_type];
+	sql = SQL.format(sql, inserts); 
+
+	connection.query(sql, (err, result, fields) => {
+		if(err) {
+			next(err);
+		}
+		else {
+			response.send(result);
+			console.log("GET /machine/price: got price of machine");
+		}
+	})
+})
+
 
 // Get queue position of a particular user
 app.get('/queue/pos', (request, response, next) => {
@@ -89,6 +164,56 @@ app.get('/venue/machines', (request, response, next) => {
 })
 
 ///////////////////////////////////////////////// POST REQUESTS
+
+app.post('/user/add/demo', (request, response, next) => {
+
+	var username = request.body.username;
+	var device_id = request.body.device_id;
+	var password = "123";
+	var name = "daniel";
+
+	var sql = "INSERT INTO `USER` (username, password, name, device_id) VALUES (?,?,?, ?)";
+	var inserts = [username, password, name, device_id];
+	sql = SQL.format(sql, inserts);
+
+	connection.query(sql, (err, result) => {
+
+		if(err) {
+			next(err);
+		}
+		else {
+			response.sendStatus(200);
+			console.log("DEMO USER ADDED!");
+		}
+	});
+})
+
+app.post('/queue/add/demo', (request, response, next) => {
+
+	var username = parseInt(request.body.username);
+	var venue_id = parseInt(request.body.venue_id);
+	var machine_type = request.body.machine_type;
+	var time_requested = requested.body.time_requested;
+
+
+	var sql = "INSERT INTO `GAME` (user_id, venue_id, time_add, machine_id) VALUES ((SELECT user_id FROM USER WHERE username = ?), ?, ?, ?)";
+	var inserts = [username, venue_id, new Date(), machine_id];
+	sql = SQL.format(sql, inserts);
+
+	connection.query(sql, (err, result) => {
+		if(err) {
+			next(err);
+		}
+		else {
+			// Send 200 status back
+			response.sendStatus(200);
+			console.log("ADDED DUMMY");
+		}
+	});
+})
+
+
+
 
 // Allow a user to login -- currently checks the login details
 app.post("/user/login", (request, response, next) => {
@@ -302,7 +427,8 @@ app.listen(port, (err) => {
 // Error handling
 app.use(function(error, request, response, next) {
     console.log("Error handler: ", error.message);
-
+	
+	console.log(error);
     // Send an error message to the user.
 	response.status(500).send(error.message);
 
