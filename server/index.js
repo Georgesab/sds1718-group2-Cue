@@ -10,6 +10,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const basicAuth = require('basic-auth');
 const app = express();
+const unixTimestamp = require("unix-timestamp")
 const port = 80;
 
 var options = {
@@ -152,6 +153,7 @@ app.post("/user/login", (request, response, next) => {
 
 	var username = request.body.username;
 	var password = request.body.password;
+	var device_id = request.body.device_id;
 
 	var sql = "SELECT password_hash FROM USER WHERE username = ?";
 	var inserts = [username];
@@ -217,20 +219,23 @@ app.post('/user/add', (request, response, next) => {
 app.post('/queue/add', (request, response, next) => {
 
 	var user_id = parseInt(request.body.user_id);
-	//var venue_id = parseInt(request.body.venue_id);
 	var machine_id = parseInt(request.body.machine_id);
-	//var time_requested = request.body.time_requested; // Use this later
 	var matchmaking = parseInt(request.body.matchmaking); // Use this later
 	var num_players = parseInt(request.body.num_players); // Use this later
-	var time_add = request.body.time_add;
+	
+	var time_add;
 	var time_requested = request.body.time_requested;
 
+	time_add = unixTimestamp.now
+	if(time_requested = 0) {
+		time_requested = timeadd;
+	}
+
 	console.log(time_add);
-	//console.log(time_requested);
 
 	//var sql = "INSERT INTO `GAME` (user_id, time_add, number_players, machine_id, matchmaking) VALUES (?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM `USERS`) AS bob)+1)";
-	var sql = "INSERT INTO `GAME` (user_id, time_add, machine_id, matchmaking, num_players, queue_pos) VALUES (?, ?, ?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM GAME AS get_queue WHERE queue_pos > 0 AND machine_id = ?) AS num_queue)+1)";
-	var inserts = [user_id, new Date(), machine_id, matchmaking, num_players, machine_id];
+	var sql = "INSERT INTO `GAME` (user_id, time_add, time_requested, machine_id, matchmaking, num_players, queue_pos) VALUES (?, ?, ?, ?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM GAME AS get_queue WHERE queue_pos > 0 AND machine_id = ?) AS num_queue)+1)";
+	var inserts = [user_id, time_add, time_requested, machine_id, matchmaking, num_players, machine_id];
 	sql = SQL.format(sql, inserts);
 
 	connection.query(sql, (err, result) => {

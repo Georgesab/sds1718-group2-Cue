@@ -152,14 +152,13 @@ Add a user to the queue — i.e. a user wants to play a game.
 
 ##### Request Body
 
-| Key            | Format   | Description                                                  |
-| -------------- | -------- | ------------------------------------------------------------ |
-| user_id        | int      | ID of user                                                   |
-| ~~venue_id~~   | ~~int~~  | ~~ID of venue~~                                              |
-| machine_id     | int      | Type of machine the user wants to play on                    |
-| time_requested | DATETIME | Time user wants to play. If NULL = ASAP.                     |
-| matchmaking    | int      | If the user wants to be matched.<br />**0** for no, **1** for yes |
-| num_players    | int      | Number of players that are requesting to play.               |
+| Key            | Format   | Description                                                	   |
+| -------------- | -------- | -------------------------------------------------------------------- |
+| user_id        | int      | ID of user                                                	   |
+| machine_id   	 | int      | Type of machine the user wants to play on         	           |
+| time_requested | UNIXTIME | Time user wants to play. <br /> 0 = ASAP		                   |
+| matchmaking    | int      | If the user wants to be matched.<br />**0** for no, **1** for yes.   |
+| num_players    | int      | Number of players that are requesting to play.              	   |
 
 ##### Return Value(s)
 
@@ -260,22 +259,22 @@ Set new device ID
 | name          | VARCHAR(40)      |
 | games_played  | SMALLINT (>= 0)  |
 | games_missed  | SMALLINT (>=  0) |
-| device_id     |                  |
+| device_id     | VARCHAR(256)     |
 
 ### GAME
 
-| Field          | Data Type   |
-| -------------- | ----------- |
-| game_id        | INT (> 0)   |
-| user_id        | INT (> 0)   |
-| queue_pos      | INT (>= -1) |
-| time_add       | DATETIME    |
-| time_requested | DATETIME    |
-| time_start     | DATETIME    |
-| time_end       | DATETIME    |
-| num_players    | INT (> 0)   |
-| machine_id 	 | INT		|
-| matchmaking	 | SMALLINT	|
+| Field          | Data Type   		    |
+| -------------- | ------------------------ |
+| game_id        | INT (> 0)   		    |
+| user_id        | INT (> 0)    	    |
+| queue_pos      | INT (>= -1)		    |
+| time_add       | DATESTAMP (UNIX TIME)    |
+| time_requested | DATESTAMP (UNIX TIME)    |
+| time_start     | DATETIME (UNIX TIME)     |
+| time_end       | DATETIME (UNIX TIME)     |
+| num_players    | INT (> 0)  		    |
+| machine_id 	 | INT			    |
+| matchmaking	 | SMALLINT	            |
 
 ### MACHINE
 
