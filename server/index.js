@@ -1,13 +1,10 @@
 
- 
 var https = require('https');
 var fs = require('fs');
 var forceSsl = require('express-force-ssl');
 
 var bcrypt = require('bcrypt');
 const saltRounds = 10;
-const plain = "helloWorld";
-const plain2 = "worldHello";
 
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -62,13 +59,16 @@ app.get('/queue', (request, response, next) => {
 	
 	// If user_id is 0, return all users, else just specifc user
 	if(user_id != 0) {
-		sql += " AND user_id = ?;";
+		sql += " AND user_id = ?";
 	}
-	else {
-		sql += ";";
+
+	if(machine_id != 0) {
+		sql += " AND G.machine_id = ?"
 	}
+
+	sql += ";";
 	
-	var inserts = [venue_id, user_id];
+	var inserts = [venue_id, user_id, machine_id];
 	sql = SQL.format(sql, inserts); 
 
 	connection.query(sql, (err, result, fields) => {
@@ -77,7 +77,7 @@ app.get('/queue', (request, response, next) => {
 		}
 		else {
 			response.send(result);
-			console.log("GET /queue: sent GAME details for venue: " + venue_id + " | user_id: " + user_id);
+			console.log("GET /queue: sent GAME details for venue: " + venue_id + " | user_id: " + user_id + " | machine_id: " + machine_id);
 		}
 	})
 })
@@ -89,7 +89,7 @@ app.get('/machine/price', (request, response, next) => {
 	var category = request.query.category;
 
 	var sql = "SELECT base_price, current_price FROM MACHINE WHERE venue_id = ?, category = ?;"
-	var inserts = [venue_id, machine_type];
+	var inserts = [venue_id, category];
 	sql = SQL.format(sql, inserts); 
 
 	connection.query(sql, (err, result, fields) => {
@@ -152,7 +152,6 @@ app.post("/user/login", (request, response, next) => {
 
 	var username = request.body.username;
 	var password = request.body.password;
-	var device_id = request.body.device_id; // TODO: Use this somewhere
 
 	var sql = "SELECT password_hash FROM USER WHERE username = ?";
 	var inserts = [username];
@@ -188,13 +187,13 @@ app.post('/user/add', (request, response, next) => {
 	var password = request.body.password;
 	var name = request.body.name;
 	var device_id = request.body.device_id;
+
+	console.log("hello");
 	
 	// HASH PASSWORD
-	bcrypt.hash(password, saltRounds, next, function(err, hash) {
+	bcrypt.hash(password, saltRounds, function(err, hash) {
 		
-		if(err) {
-			next(err);
-		}
+		console.log("world");
 		
 		var sql = "INSERT INTO `USER` (username, password_hash, name, device_id) VALUES (?,?,?,?)";
 		var inserts = [username, hash, name, device_id];
@@ -207,25 +206,26 @@ app.post('/user/add', (request, response, next) => {
 			}
 			else {
 				response.sendStatus(200);
-				console.log("POST /user/add: Added new user");
+				console.log("POST /user/add: Added new user - " + username);
 			}
 
 		});
+	})
 })
 
 // Add a user to the queue — i.e. a user wants to play a game.
 app.post('/queue/add', (request, response, next) => {
 
 	var user_id = parseInt(request.body.user_id);
-	var venue_id = parseInt(request.body.venue_id);
+	//var venue_id = parseInt(request.body.venue_id);
 	var machine_id = parseInt(request.body.machine_id);
 	var time_requested = request.body.time_requested; // Use this later
 	var matchmaking = parseInt(request.body.matchmaking); // Use this later
 	var num_players = parseInt(request.body.num_players); // Use this later
 
 	//var sql = "INSERT INTO `GAME` (user_id, time_add, number_players, machine_id, matchmaking) VALUES (?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM `USERS`) AS bob)+1)";
-	var sql = "INSERT INTO `GAME` (user_id, venue_id, time_add, machine_id, matchmaking, num_players, queue_pos) VALUES (?, ?, ?, ?, ?, ?, (SELECT MAX(queue_pos) FROM (SELECT * FROM GAME WHERE queue_pos > 0 AND machine_id = 1))AS queue)+1)";
-	var inserts = [user_id, venue_id, new Date(), machine_id, matchmaking, num_players];
+	var sql = "INSERT INTO `GAME` (user_id, time_add, machine_id, matchmaking, num_players, queue_pos) VALUES (?, ?, ?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM GAME AS get_queue WHERE queue_pos > 0 AND machine_id = ?) AS num_queue)+1)";
+	var inserts = [user_id, new Date(), machine_id, matchmaking, num_players, machine_id];
 	sql = SQL.format(sql, inserts);
 
 	connection.query(sql, (err, result) => {
@@ -240,11 +240,96 @@ app.post('/queue/add', (request, response, next) => {
 	});
 })
 
+// Add a completely new type of machine to a specific venue
+app.post('/machine/add', (request, response, next) => {
+
+	var venue_id = parseInt(request.body.venue_id);
+	var category = request.body.category;
+	var total = parseInt(request.body.total);
+	var base_price = parseInt(request.body.base_price);
+
+	var sql = "INSERT INTO `MACHINE` (venue_id, category, total, available, base_price, current_price) VALUES (?,?,?,?,?,?);"
+	var inserts = [venue_id, category, total, total, base_price, base_price]
+	sql = SQL.format(sql, inserts);
+
+	connection.query(sql, (err, result) => {
+		if(err) {
+			next(err);
+		}
+		else {
+
+			// Now get machine_id of the machine that was just added
+			var sql = "SELECT * FROM MACHINE WHERE machine_id=last_insert_id()"
+			
+			connection.query(sql, (err, result2) => {
+				if(err) {
+					next(err);
+				}
+				else {
+					// Send 200 status back
+					//response.sendStatus(200);
+					response.send(result2)
+					console.log("POST /machine/add: Added new machine");
+				}
+			})
+		}
+	});
+
+})
+
 
 ///////////////////////////////////////////////// PUT REQUESTS
 
+// Update statistics of an existing machine
+app.put('/machine/edit', (request, response, next) => {
+
+	var machine_id = parseInt(request.body.machine_id);
+	var venue_id = parseInt(request.body.venue_id);
+	var total = parseInt(request.body.total);
+	var base_price = parseFloat(request.body.base_price);
+
+	// Base sql
+	var sql = "UPDATE MACHINE SET"
+
+	if(total != 0) {
+		sql += " total = " + connection.escape(total) + ", available = " + connection.escape(total)
+		//sql = SQL.format(sql, total, total);
+
+		if(base_price != 0) {
+			sql += ", "
+		}
+
+	}
+	if(base_price != 0) {
+		sql += " base_price = " + connection.escape(base_price) + ", current_price = " + connection.escape(base_price)
+		sql = SQL.format(sql, base_price)
+	}
+	
+	sql += " WHERE machine_id = ?;";
+	
+	//var inserts = [total, total, base_price, base_price, machine_id]
+	sql = SQL.format(sql, machine_id);
+
+	console.log("MEME")
+	console.log(sql);
+
+	connection.query(sql, (err, result) => {
+		if(err) {
+			next(err);
+		}
+		else {
+			// Send 200 status back
+			response.sendStatus(200);
+			console.log("PUT /machine/edit: Update machine");
+		}
+	});
+
+
+})
+
+
 // Confirm the presence of a user/start the game.
-app.post('/queue/gameStart', (request, response, next) => {
+app.put('/queue/gameStart', (request, response, next) => {
 
 	var user_id = parseInt(request.body.user_id);
 	var game_id = parseInt(request.body.game_id);
@@ -269,7 +354,7 @@ app.post('/queue/gameStart', (request, response, next) => {
 })
 
 // Confirm game end.
-app.post('/queue/gameEND', (request, response, next) => {
+app.put('/queue/gameEnd', (request, response, next) => {
 
 	var user_id = parseInt(request.body.user_id);
 	var game_id = parseInt(request.body.game_id);
@@ -290,6 +375,29 @@ app.post('/queue/gameEND', (request, response, next) => {
 			console.log("POST /queue/gameEND: Ended GAME");
 		}
 	});
+})
+
+// Update users device
+app.put('/user/deviceid', (request, response, next) => {
+
+	var user_id = parseInt(request.body.user_id);
+	var device_id = request.body.device_id;
+
+	var sql = "UPDATE USER SET device_id = ? WHERE user_id = ?"
+	var inserts = [device_id, user_id];
+
+	connection.query(sql, (err, result) => {
+
+		if(err) {
+			next(err);
+		}
+		else {
+			response.sendStatus(200);
+			console.log("POST /user/deviceid: Updated device ID for user " + user_id)
+		}
+
+	})
+
 })
 
 
