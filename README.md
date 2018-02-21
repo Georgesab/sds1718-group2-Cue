@@ -1,4 +1,4 @@
-IDK SDS - node.js Server + mariaDB Database
+# IDK SDS - node.js Server + mariaDB Database
 
 # Server Details
 
@@ -21,13 +21,11 @@ IDK SDS - node.js Server + mariaDB Database
 
 Server that provides endpoints to modify a mariaDB database on the hosting machine.
 
-Note: all body requests should use **x-www-form-urlencoded**
+All body requests should use **x-www-form-urlencoded**
 
-## TO ADD
+All return values if not a default HTTP status code are in **json**.
 
-* POST - Add type of machine
-* PUT - Edit number of machines/pricing
-* DELETE - Delete machines
+
 
 ## GET Requests
 
@@ -35,19 +33,19 @@ Note: all body requests should use **x-www-form-urlencoded**
 
 Returns index.html — eventually used for web UI
 
-### GET '/config/*'
+### ~~GET '/config/*'~~
 
-Returns a page under config (e.g. /config or /config/stats)
+~~Returns a page under config (e.g. /config or /config/stats)~~
 
-Each page in this section requires basic authentication, currently hardcoded.
+~~Each page in this section requires basic authentication, currently hardcoded.~~
 
-**User**: idk, **Password**: blockchain
+~~**User**: idk, **Password**: blockchain~~
 
 ### GET /queue
 
 Get all games or a specific game currently in the queue.
 
-**Query Parameters**
+##### Query Parameters
 
 | Key        | Format | Description                                                  |
 | ---------- | ------ | ------------------------------------------------------------ |
@@ -55,22 +53,22 @@ Get all games or a specific game currently in the queue.
 | machine_id | int    | Type of machine to look for.<br />[IF 0, SHOW ALL]           |
 | user_id    | int    | User ID to request queue for<br />[IF 0, SHOW ALL FOR VENUE] |
 
-**Return Value**
+##### Return Value(s)
 
-GAME object(s)
+JSON object(s) of GAME row(s).
 
 ### GET /machine/price
 
 Get current price of a certain machine in a specific venue to show the user.
 
-**Query Parameters**
+##### Query Parameters
 
 | Key          | Format | Description          |
 | ------------ | ------ | -------------------- |
 | venue_id     | int    | ID of specific venue |
 | machine_type | int    | Type of machine      |
 
-**Return Value**
+##### Return Value(s)
 
 | Key           | Format | Description                  |
 | ------------- | ------ | ---------------------------- |
@@ -81,31 +79,33 @@ Get current price of a certain machine in a specific venue to show the user.
 
 Get the list of machines in a specific venue.
 
-**Query Parameters**
+##### Query Parameters
 
 | Key      | Format | Description          |
 | -------- | ------ | -------------------- |
 | venue_id | int    | ID of specific venue |
 
-**Return Value**
-MACHINE objects.
+##### Return Value(s)
 
-### GET /game/waitTime — NOT FUNCTIONAL YET
+JSON object(s) of GAME row(s).
 
-Returns the current average wait time for a specfic type of machine in a specific venue.
+### ~~GET /game/waitTime — NOT FUNCTIONAL YET~~
 
-QUESTION - HOW IS THIS CALC???
+~~Returns the current average wait time for a specfic type of machine in a specific venue.~~
 
-**Query Parameters**
+~~QUESTION - HOW IS THIS CALC???~~
+
+##### Query Parameters
 
 | Key        | Format | Description          |
 | ---------- | ------ | -------------------- |
 | machine_id | int    | ID of specific venue |
 
-**Return Value**
+##### Return Value
+
 MACHINE objects.
 
-NOT IMPLEMENTED YET
+**NOT IMPLEMENTED YET**
 
 ## POST Requests
 
@@ -113,7 +113,7 @@ NOT IMPLEMENTED YET
 
 Allow a user to login/be authenticated.
 
-**Request Body**
+##### Request Body
 
 | Key       | Format     | Description                |
 | --------- | ---------- | -------------------------- |
@@ -121,16 +121,17 @@ Allow a user to login/be authenticated.
 | password  | String(24) | Password                   |
 | device_id | String     | ID of device from Firebase |
 
-**Return Value(s)**
-**200 OK** username/password correct
+##### Return Value(s)
 
-**401** incorrect username/password
+**<u>200 OK</u>** username/password correct
+
+**<u>401</u>** incorrect username/password
 
 ### POST /user/add
 
 Add a new user to the service.
 
-**Request Body**
+##### Request Body
 
 | Key       | Format     | Description                     |
 | --------- | ---------- | ------------------------------- |
@@ -139,59 +140,111 @@ Add a new user to the service.
 | name      |            | First name of user              |
 | device_id | String     |                                 |
 
-**Return Value(s)**
-MACHINE object.
+##### Return Value(s)
+
+***<u>200 OK</u>*** User successfully added
+
+**<u>500 Internal Server Error</u>** Username already exists
 
 ### POST /queue/add
 
 Add a user to the queue — i.e. a user wants to play a game.
 
-**Request Body**
+##### Request Body
 
 | Key            | Format   | Description                                                  |
 | -------------- | -------- | ------------------------------------------------------------ |
 | user_id        | int      | ID of user                                                   |
-| venue_id       | int      | ID of venue                                                  |
+| ~~venue_id~~   | ~~int~~  | ~~ID of venue~~                                              |
 | machine_id     | int      | Type of machine the user wants to play on                    |
 | time_requested | DATETIME | Time user wants to play. If NULL = ASAP.                     |
 | matchmaking    | int      | If the user wants to be matched.<br />**0** for no, **1** for yes |
 | num_players    | int      | Number of players that are requesting to play.               |
 
-**Return Value(s)**
+##### Return Value(s)
 
-**200 OK**
-
-## PUT Requests
-
-### POST /queue/gameStart
-
-Confirm the presence of a user/start the game.
-
-**Request Body**
-
-| Key     | Format | Description |
-| ------- | ------ | ----------- |
-| user_id | int    | ID of user  |
-| game_id | int    | ID of game  |
-
-**Return Value(s)**
-
-### POST /queue/gameEnd
-
-Confirm game end.
-
-**Request Body**
-
-| Key     | Format | Description |
-| ------- | ------ | ----------- |
-| user_id | int    | ID of user  |
-| game_id | int    | ID of game  |
-
-**Return Value(s)**
+**<u>200 OK</u>** User successfully added to queue
 
 ### POST /machine/add
 
-**TODO** - This will add a machine, e.g. if the pub gets a new category of machine.
+Add a completely new type of machine to a specific venue
+
+##### Request Body
+
+| Key        | Format  | Description                      |
+| ---------- | ------- | -------------------------------- |
+| venue_id   | int     | ID of venue                      |
+| category   | string  | Type of machine (e.g. pool)      |
+| total      | int     | Number of this machine available |
+| base_price | decimal | Start price                      |
+
+##### Return Value(s)
+
+JSON object of MACHINE row for newly created machine (use to get machine_id)
+
+## PUT Requests
+
+### PUT /machine/edit
+
+Edit a machine - e.g. change the default price or the number in the venue.
+
+##### Request Body
+
+| Key        | Format  | Description                                                  |
+| ---------- | ------- | ------------------------------------------------------------ |
+| machine_id | int     | ID of machine to edit                                        |
+| venue_id   | Int     | ID of venue where the machine is                             |
+| total      | int     | New number of machines.<br />Set to 0 to keep current value.. |
+| base_price | decimal | New default price.<br />Set to 0 to keep current value.      |
+
+##### Return Value(s)
+
+**<u>200 OK</u>** Successfully updated
+
+### PUT /queue/gameStart
+
+Confirm the presence of a user/start the game.
+
+##### Request Body
+
+| Key     | Format | Description |
+| ------- | ------ | ----------- |
+| user_id | int    | ID of user  |
+| game_id | int    | ID of game  |
+
+##### Return Value(s)
+
+### PUT /queue/gameEnd
+
+Confirm game end.
+
+##### Request Body
+
+| Key     | Format | Description |
+| ------- | ------ | ----------- |
+| user_id | int    | ID of user  |
+| game_id | int    | ID of game  |
+
+##### Return Value(s)
+
+**<u>200 OK</u>** Successfully updated
+
+### PUT /user/deviceid
+
+Set new device ID
+
+**Request Body**
+
+**<u>200 OK</u>** Successfully updated
+
+| Key       | Format | Description                   |
+| --------- | ------ | ----------------------------- |
+| user_id   | int    | ID of user                    |
+| device_id | int    | New device ID to set for user |
+
+**Return Value(s)**
+
+****<u>200 OK</u>** Successfully updated**
 
 # Database
 
@@ -207,6 +260,7 @@ Confirm game end.
 | name          | VARCHAR(40)      |
 | games_played  | SMALLINT (>= 0)  |
 | games_missed  | SMALLINT (>=  0) |
+| device_id     |                  |
 
 ### GAME
 

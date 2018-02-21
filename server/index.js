@@ -223,6 +223,13 @@ app.post('/queue/add', (request, response, next) => {
 	var matchmaking = parseInt(request.body.matchmaking); // Use this later
 	var num_players = parseInt(request.body.num_players); // Use this later
 
+	/*
+
+	var time_add = request.body.time_add;
+	var time_requested = request.body.time_requested;
+
+	*/
+
 	//var sql = "INSERT INTO `GAME` (user_id, time_add, number_players, machine_id, matchmaking) VALUES (?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM `USERS`) AS bob)+1)";
 	var sql = "INSERT INTO `GAME` (user_id, time_add, machine_id, matchmaking, num_players, queue_pos) VALUES (?, ?, ?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM GAME AS get_queue WHERE queue_pos > 0 AND machine_id = ?) AS num_queue)+1)";
 	var inserts = [user_id, new Date(), machine_id, matchmaking, num_players, machine_id];
