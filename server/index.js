@@ -146,6 +146,30 @@ app.get('/game/waitTime', (request, response, next) => {
 
 })
 
+
+// See if a user is responsible for a venue
+app.get('/user/admin', (request, response, next) => {
+
+	var user_id = parseInt(request.query.user_id);
+
+	var sql = "SELECT venue_id FROM ADMIN WHERE user_id = ?"
+	var inserts = [user_id];
+	sql = SQL.format(sql, inserts);
+
+	connection.query(sql, (err, result, fields) => {
+
+		if(err) {
+			next(err);
+		}
+		else {
+			response.send(result);
+		}
+
+
+	})
+
+})
+
 ///////////////////////////////////////////////// POST REQUESTS
 
 // Allow a user to login/be authenticated.
@@ -155,7 +179,7 @@ app.post("/user/login", (request, response, next) => {
 	var password = request.body.password;
 	var device_id = request.body.device_id;
 
-	var sql = "SELECT password_hash FROM USER WHERE username = ?";
+	var sql = "SELECT user_id, password_hash FROM USER WHERE username = ?";
 	var inserts = [username];
 	sql = SQL.format(sql, inserts); 
 
@@ -166,11 +190,30 @@ app.post("/user/login", (request, response, next) => {
 		}
 		else {
 
+			console.log(result[0].user_id);
+			var bob = parseInt(result[0].user_id);
 			bcrypt.compare(password, result[0].password_hash, (err, res) => {
 
 				// If user details correct
 				if(res) {
-					response.sendStatus(200);
+					// response.sendStatus(200);
+
+					var sql = "UPDATE USER SET device_id = ? WHERE user_id = ?"
+					var inserts = [device_id, bob];
+					sql = SQL.format(sql, inserts); 
+				
+					connection.query(sql, (err, result) => {
+				
+						if(err) {
+							next(err);
+						}
+						else {
+							response.sendStatus(200);
+							console.log("POST /user/deviceid: LOGGED IN + Updated device ID for user " + bob)
+						}
+			
+					})
+
 				}
 				// If user details incorrect
 				else {
@@ -366,11 +409,17 @@ app.put('/queue/gameStart', (request, response, next) => {
 // Confirm game end.
 app.put('/queue/gameEnd', (request, response, next) => {
 
-	var user_id = parseInt(request.body.user_id);
+	var machine_id = parseInt(request.body.machine_id);
 	var game_id = parseInt(request.body.game_id);
+	var user_id = parseInt(request.body.user_id);
 	
-	var sql = "UPDATE GAME SET queue_pos = -1 WHERE game_id = ?;"
+	//var sql = "UPDATE GAME SET queue_pos = -1 WHERE game_id = ?;"
+	var sql = "UPDATE `GAME` SET `queue_pos` = `queue_pos` -1 WHERE `queue_pos` != '-1' AND `machine_id` = ?; UPDATE `GAME` SET `time_end` = ? WHERE `game_id` = ?; SELECT device_id FROM `USER` WHERE user_id = (SELECT user_id FROM `GAME` AS bob WHERE queue_pos = 0 AND machine_id = ?);"
+	var inserts = [machine_id, new Date(), game_id, machine_id];
+	sql = SQL.format(sql, inserts);
 	// WILL NEED TO INCREASE NUMBER AVAILABLE MACHINE
+	//
+
 	// SHUFFLE QUEUE UP
 	var inserts = [game_id];
 	sql = SQL.format(sql, inserts);
@@ -381,6 +430,34 @@ app.put('/queue/gameEnd', (request, response, next) => {
 		}
 		else {
 			// Send 200 status back
+
+			//console.log(result[2]);
+			var resuu = result[2][0].device_id;
+
+
+			var FCM = require('fcm-push');
+
+			var serverKey = 'AAAA7qf1S-s:APA91bHj07GD0akUObgNBy8VnF2HGjrgZ5OJRtaBTmK3yTS_aYQV3vnlbE75laH3GOcg_FTwe2aYosIFC3mXDkFUxTO4N-yJe2Zda31uQUyxod73FGSPBFUIF_7uzDIQ34IiCi_kGewV';
+			var fcm = new FCM(serverKey);
+
+			var message = {
+				to: result[2][0].device_id, // required fill with device token or topics
+				notification: {
+					title: 'Traintracks',
+					body: 'This app sucks. Download the official TrainLine app.'
+				}
+			};
+
+			//callback style
+			fcm.send(message, function(err, response){
+				if (err) {
+					console.log("Something has gone wrong!");
+				} else {
+					console.log("Successfully sent with response: ", response);
+				}
+			});
+
+
 			response.sendStatus(200);
 			console.log("POST /queue/gameEND: Ended GAME");
 		}
