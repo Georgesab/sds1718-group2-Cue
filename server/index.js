@@ -12,6 +12,7 @@ const basicAuth = require('basic-auth');
 const app = express();
 const unixTimestamp = require("unix-timestamp")
 const port = 80;
+const uuidv1 = require('uuid/v1');
 
 var options = {
 	key: fs.readFileSync('/etc/letsencrypt/live/idk-cue.club/privkey.pem'),
@@ -36,6 +37,9 @@ connection.connect();
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(forceSsl);
+
+///////////////////////////////////////////////// HELPER/REUSABLE FUNCTIONS
+
 
 ///////////////////////////////////////////////// GET REQUESTS
 
@@ -70,7 +74,7 @@ app.get('/queue', (request, response, next) => {
 	sql += ";";
 	
 	var inserts = [venue_id, user_id, machine_id];
-	sql = SQL.format(sql, inserts); 
+	sql = SQL.format(sql, inserts);
 
 	connection.query(sql, (err, result, fields) => {
 		if(err) {
@@ -106,7 +110,7 @@ app.get('/machine/price', (request, response, next) => {
 
 
 // Get the list of machines in a specific venue.
-app.get('/machine/all', (request, response, next) => {
+app.get('/machines/all', (request, response, next) => {
 
 	var venue_id = parseInt(request.query.venue_id);
 
@@ -118,17 +122,20 @@ app.get('/machine/all', (request, response, next) => {
 			next(err);
 		}
 		else {
-			response.send(result);
+			//response.send(result);
+			response.json({"Machines": result})
 			console.log("GET /venue/machines: returned all the machines in venue: " + venue_id);
 		}
 	})
 })
 
 // Returns the current average wait time for a specfic type of machine in a specific venue.
-app.get('/game/waitTime', (request, response, next) => {
+app.get('/venue/wait', (request, response, next) => {
 
 	var venue_id = parseInt(request.query.venue_id);
+	var category = request.query.category;
 
+	/*
 	var sql = ""
 	sql = SQL.format(sql, "");
 
@@ -143,6 +150,7 @@ app.get('/game/waitTime', (request, response, next) => {
 		}
 
 	})
+	*/
 
 })
 
@@ -160,9 +168,16 @@ app.get('/user/admin', (request, response, next) => {
 
 		if(err) {
 			next(err);
+			console.log(err);
 		}
 		else {
-			response.send(result);
+			//response.send(result);
+
+			response.json({"Venues": result})
+			console.log("GET /user/admin: Sent admin status for user_id: " + user_id);
+
+			//response.json([{"user_id": result[1][0].user_id}]);
+
 		}
 
 
@@ -170,7 +185,32 @@ app.get('/user/admin', (request, response, next) => {
 
 })
 
+// Get details for a specific venue
+app.get('/venue', (request, response, next) => {
+
+	var venue_id = parseInt(request.query.venue_id);
+
+	var sql = "SELECT * FROM VENUE WHERE venue_id = ?"
+	var inserts = [venue_id];
+	sql = SQL.format(sql, inserts);
+
+	connection.query(sql, (err, result, fields) => {
+
+		if(err) {
+			next(err);
+		}
+		else {
+			response.json({"venue": result})
+		}
+	})
+
+})
+
 ///////////////////////////////////////////////// POST REQUESTS
+
+app.post("/queue/leave", (request, response, next) => [
+	// TBA
+])
 
 // Allow a user to login/be authenticated.
 app.post("/user/login", (request, response, next) => {
@@ -180,8 +220,9 @@ app.post("/user/login", (request, response, next) => {
 	var device_id = request.body.device_id;
 
 	var sql = "SELECT user_id, password_hash FROM USER WHERE username = ?";
-	var inserts = [username];
+	var inserts = [username, username];
 	sql = SQL.format(sql, inserts); 
+
 
 	connection.query(sql, (err, result, fields) => {
 
@@ -190,16 +231,24 @@ app.post("/user/login", (request, response, next) => {
 		}
 		else {
 
-			console.log(result[0].user_id);
-			var bob = parseInt(result[0].user_id);
+			if (result === undefined || result.length == 0) {
+				// IF ARRAY = EMPTY, NO USER RETURNED = RETURN 401 STATUS
+				response.sendStatus(401);
+				return;
+			}
+
+			var logged_in_user = parseInt(result[0].user_id);
+
 			bcrypt.compare(password, result[0].password_hash, (err, res) => {
 
 				// If user details correct
 				if(res) {
 					// response.sendStatus(200);
 
-					var sql = "UPDATE USER SET device_id = ? WHERE user_id = ?"
-					var inserts = [device_id, bob];
+					var session_cookie = uuidv1();
+					console.log(session_cookie);
+					var sql = "UPDATE USER SET device_id = ?, session_cookie = ? WHERE user_id = ?; SELECT * FROM ADMIN WHERE user_id = ?;"
+					var inserts = [device_id, session_cookie, logged_in_user, logged_in_user];
 					sql = SQL.format(sql, inserts); 
 				
 					connection.query(sql, (err, result) => {
@@ -208,8 +257,8 @@ app.post("/user/login", (request, response, next) => {
 							next(err);
 						}
 						else {
-							response.sendStatus(200);
-							console.log("POST /user/deviceid: LOGGED IN + Updated device ID for user " + bob)
+							response.json({User:[{"user_id": logged_in_user,"session_cookie": session_cookie}], Admin:result[1]});
+							console.log("POST /user/login: Logged in + Updated device ID for user " + logged_in_user)
 						}
 			
 					})
@@ -225,6 +274,34 @@ app.post("/user/login", (request, response, next) => {
 	})
 })
 
+app.post('/user/logout', (request, response, next) => {
+
+	var user_id = parseInt(request.body.user_id);
+	// var session_cookie = request.body.session_id;
+
+	var sql = "UPDATE USER SET session_cookie = '' WHERE user_id = ?;"
+	
+	var inserts = [user_id];
+	sql = SQL.format(sql, inserts);
+
+	connection.query(sql, (err, result, fields) => {
+
+		if(err) {
+			next(err);
+			console.log(err);
+		}
+		else {
+			//response.send(result);
+
+			//response.sendStatus(200);
+			console.log("POST /user/logout: User: " + user_id + " logged out!")
+
+			response.json({"user": "logged out"});
+
+		}
+	})
+})
+
 // Add a new user to the service.
 app.post('/user/add', (request, response, next) => {
 
@@ -232,16 +309,13 @@ app.post('/user/add', (request, response, next) => {
 	var password = request.body.password;
 	var name = request.body.name;
 	var device_id = request.body.device_id;
-
-	console.log("hello");
+	var session_cookie = uuidv1();
 	
 	// HASH PASSWORD
 	bcrypt.hash(password, saltRounds, function(err, hash) {
 		
-		console.log("world");
-		
-		var sql = "INSERT INTO `USER` (username, password_hash, name, device_id) VALUES (?,?,?,?)";
-		var inserts = [username, hash, name, device_id];
+		var sql = "INSERT INTO `USER` (username, password_hash, name, device_id, session_cookie) VALUES (?,?,?,?, ?); SELECT last_insert_id() AS user_id;";
+		var inserts = [username, hash, name, device_id, session_cookie];
 		sql = SQL.format(sql, inserts);
 
 		connection.query(sql, (err, result) => {
@@ -250,7 +324,9 @@ app.post('/user/add', (request, response, next) => {
 				next(err);
 			}
 			else {
-				response.sendStatus(200);
+
+				response.json({User:[{"user_id": result[1][0].user_id, "session_cookie": session_cookie}]});
+
 				console.log("POST /user/add: Added new user - " + username);
 			}
 
@@ -258,27 +334,49 @@ app.post('/user/add', (request, response, next) => {
 	})
 })
 
+
+app.put('/queue/edit', (request, response, next) => {
+
+	// EDIT QUEUE TIME
+	// 
+	var user_id = parseInt(request.body.user_id);
+	var game_id = praseInt(request.body.game_id);
+	var time_requested = request.body.time_requested;
+
+
+
+})
+
 // Add a user to the queue — i.e. a user wants to play a game.
 app.post('/queue/add', (request, response, next) => {
 
 	var user_id = parseInt(request.body.user_id);
 	var machine_id = parseInt(request.body.machine_id);
-	var matchmaking = parseInt(request.body.matchmaking); // Use this later
-	var num_players = parseInt(request.body.num_players); // Use this later
 	
-	var time_add;
-	var time_requested = request.body.time_requested;
+	var matchmaking = 0// Use this later
+	var num_players = 2// Use this later
 
-	time_add = unixTimestamp.now
-	if(time_requested = 0) {
-		time_requested = timeadd;
+	var time_add;
+	var time_requested = parseInt(request.body.time_requested);
+	var session_cookie = request.body.session_cookie;
+
+	time_add = new Date();
+	var time_requested_ds;
+	
+	
+	if(time_requested == 0) {
+		time_requested_ds = time_add;
+	}
+	else {
+		time_requested_ds = new Date(time_requested * 1000);
 	}
 
-	console.log(time_add);
-
 	//var sql = "INSERT INTO `GAME` (user_id, time_add, number_players, machine_id, matchmaking) VALUES (?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM `USERS`) AS bob)+1)";
-	var sql = "INSERT INTO `GAME` (user_id, time_add, time_requested, machine_id, matchmaking, num_players, queue_pos) VALUES (?, ?, ?, ?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM GAME AS get_queue WHERE queue_pos > 0 AND machine_id = ?) AS num_queue)+1)";
-	var inserts = [user_id, time_add, time_requested, machine_id, matchmaking, num_players, machine_id];
+	var sql = "SELECT * FROM USER where user_id = ?; INSERT INTO `GAME` (user_id, time_add, time_requested, machine_id, matchmaking, num_players, queue_pos) VALUES (?, ?, ?, ?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM GAME AS get_queue WHERE queue_pos > 0 AND machine_id = ?) AS num_queue)+1); SELECT * FROM GAME WHERE game_id = last_insert_id();";
+	
+	
+	
+	var inserts = [user_id, user_id, time_add, time_requested_ds, machine_id, matchmaking, num_players, machine_id];
 	sql = SQL.format(sql, inserts);
 
 	connection.query(sql, (err, result) => {
@@ -286,8 +384,14 @@ app.post('/queue/add', (request, response, next) => {
 			next(err);
 		}
 		else {
+			
+			console.log(result);
+			//// CHECK THE SESSION COOKIE
+
 			// Send 200 status back
-			response.sendStatus(200);
+			console.log(result[1]);
+			//response.sendStatus(200);
+			response.json({game:[result[1][0]]});
 			console.log("POST /queue/add: Added user to queue");
 		}
 	});
@@ -298,11 +402,10 @@ app.post('/machine/add', (request, response, next) => {
 
 	var venue_id = parseInt(request.body.venue_id);
 	var category = request.body.category;
-	var total = parseInt(request.body.total);
 	var base_price = parseInt(request.body.base_price);
 
-	var sql = "INSERT INTO `MACHINE` (venue_id, category, total, available, base_price, current_price) VALUES (?,?,?,?,?,?);"
-	var inserts = [venue_id, category, total, total, base_price, base_price]
+	var sql = "INSERT INTO `MACHINE` (venue_id, category, base_price, current_price) VALUES (?,?,?,?);"
+	var inserts = [venue_id, category, base_price, base_price]
 	sql = SQL.format(sql, inserts);
 
 	connection.query(sql, (err, result) => {
@@ -312,7 +415,7 @@ app.post('/machine/add', (request, response, next) => {
 		else {
 
 			// Now get machine_id of the machine that was just added
-			var sql = "SELECT * FROM MACHINE WHERE machine_id=last_insert_id()"
+			var sql = "SELECT * FROM MACHINE WHERE machine_id=last_insert_id();"
 			
 			connection.query(sql, (err, result2) => {
 				if(err) {
@@ -321,7 +424,8 @@ app.post('/machine/add', (request, response, next) => {
 				else {
 					// Send 200 status back
 					//response.sendStatus(200);
-					response.send(result2)
+					response.json({Machine:result2});
+					//response.send(result2)
 					console.log("POST /machine/add: Added new machine");
 				}
 			})
@@ -387,9 +491,9 @@ app.put('/queue/gameStart', (request, response, next) => {
 	var user_id = parseInt(request.body.user_id);
 	var game_id = parseInt(request.body.game_id);
 	
-	var sql = "UPDATE GAME SET queue_pos = 0 WHERE game_id = ?;"
-	// WILL NEED TO DECREASE NUMBER AVAILABLE MACHINE
-	var inserts = [game_id];
+	var sql = "UPDATE GAME SET queue_pos = 0, time_start = ? WHERE game_id = ?;"
+	var time_start = new Date();
+	var inserts = [time_start, game_id];
 
 	// SHUFFLE QUEUE UP
 	sql = SQL.format(sql, inserts);
