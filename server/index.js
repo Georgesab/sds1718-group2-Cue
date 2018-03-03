@@ -30,6 +30,8 @@ var connection = SQL.createConnection({
 	database: 'SDS1'
 });
 
+var SAN = require("sql-template-strings");
+
 // Connect to the database
 connection.connect();
 
@@ -39,6 +41,12 @@ app.use(bodyParser.json());
 app.use(forceSsl);
 
 ///////////////////////////////////////////////// HELPER/REUSABLE FUNCTIONS
+
+
+
+
+
+
 
 
 ///////////////////////////////////////////////// GET REQUESTS
@@ -397,40 +405,107 @@ app.post('/queue/add', (request, response, next) => {
 	});
 })
 
-// Add a completely new type of machine to a specific venue
+// Add a new machine to a specific venue.
 app.post('/machine/add', (request, response, next) => {
 
 	var venue_id = parseInt(request.body.venue_id);
 	var category = request.body.category;
 	var base_price = parseInt(request.body.base_price);
 
-	var sql = "INSERT INTO `MACHINE` (venue_id, category, base_price, current_price) VALUES (?,?,?,?);"
-	var inserts = [venue_id, category, base_price, base_price]
-	sql = SQL.format(sql, inserts);
+	// Check whether category exists yet for that venue.
+	var query = (SAN
+			`SELECT  machine_id FROM MACHINE
+			WHERE venue_id=${venue_id}
+			AND category=${category};`
+			);
 
-	connection.query(sql, (err, result) => {
-		if(err) {
+	// TESTING
+	connection.query(query, (err, result) => {
+		if (err) {
 			next(err);
 		}
 		else {
+			//response.sendStatus(200);
+			// If category doesn't exist yet, make a queue for it.
+			if (result.length == 0) {
+				var query2 = (SAN
+					`INSERT INTO QUEUE(venue_id, category)
+					VALUES(${venue_id}, ${category});`
+				);
 
-			// Now get machine_id of the machine that was just added
-			var sql = "SELECT * FROM MACHINE WHERE machine_id=last_insert_id();"
-			
-			connection.query(sql, (err, result2) => {
-				if(err) {
-					next(err);
+				connection.query(query2, (err2, result2) => {
+					if (err2) {
+						next(err2);
+					}
+					else {
+						console.log("POST /machine/add: Added new queue.");
+					}
+				})
+			}
+
+			// Make new machine record.
+			var query2 = (SAN
+				`INSERT INTO
+					MACHINE(venue_id, category, base_price, current_price)
+					VALUES(${venue_id}, ${category}, ${base_price}, ${base_price});`
+			);
+
+			connection.query(query2, (err2, result2) => {
+				if (err2) {
+					next(err2);
 				}
 				else {
-					// Send 200 status back
-					//response.sendStatus(200);
-					response.json({Machine:result2});
-					//response.send(result2)
-					console.log("POST /machine/add: Added new machine");
+					query3 = (SAN
+              					`SELECT machine_id FROM MACHINE
+                                        			WHERE machine_id=last_insert_id();`
+                        		);
+
+                        		connection.query(query3, (err3, result3) => {
+                                		if (err3) {
+                                		        next(err3);
+                                		}
+                                		else {
+                                		        response.json({Machine:result3});
+                                			console.log("POST /machine/add: Added new machine");
+						}
+                        		})
 				}
 			})
+
 		}
 	});
+
+
+
+
+
+//	var sql = "INSERT INTO `MACHINE` (venue_id, category, base_price, current_price) VALUES (?,?,?,?);"
+//	var inserts = [venue_id, category, base_price, base_price]
+//	sql = SQL.format(sql, inserts);
+
+//	connection.query(sql, (err, result) => {
+//		if(err) {
+//			next(err);
+//		}
+//		else {
+//
+//			// Now get machine_id of the machine that was just added
+//			var sql = "SELECT * FROM MACHINE WHERE machine_id=last_insert_id();"
+//			
+//			connection.query(sql, (err, result2) => {
+//				if(err) {
+//					next(err);
+//				}
+//				else {
+//					// Send 200 status back
+//					//response.sendStatus(200);
+//					response.json({Machine:result2});
+//					//response.send(result2)
+//					console.log("POST /machine/add: Added new machine");
+//				}
+//			})
+//		}
+//	});
 
 })
 
