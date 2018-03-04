@@ -33,15 +33,7 @@ All return values if not a default HTTP status code are in **json**.
 
 Returns index.html — eventually used for web UI
 
-### ~~GET '/config/*'~~
-
-~~Returns a page under config (e.g. /config or /config/stats)~~
-
-~~Each page in this section requires basic authentication, currently hardcoded.~~
-
-~~**User**: idk, **Password**: blockchain~~
-
-### GET /queue
+### GET /queue -- **subject to change**
 
 Get all games or a specific game currently in the queue.
 
@@ -57,25 +49,28 @@ Get all games or a specific game currently in the queue.
 
 JSON object(s) of GAME row(s).
 
-### GET /machine/price
+### GET /venues/nearby
 
-Get current price of a certain machine in a specific venue to show the user.
+Get the 5 closest venues to a user.
 
 ##### Query Parameters
 
-| Key          | Format | Description          |
-| ------------ | ------ | -------------------- |
-| venue_id     | int    | ID of specific venue |
-| machine_type | int    | Type of machine      |
+| Key        | Format     | Description                                                  |
+| ---------- | ---------- | ------------------------------------------------------------ |
+| latitude   | decimal    | Current latitude of the user                                 |
+| longitude  | decimal    | Current longitude of the user                                |
 
 ##### Return Value(s)
 
-| Key           | Format | Description                  |
-| ------------- | ------ | ---------------------------- |
-| base_price    | int    | Default price of the machine |
-| current_price | int    | Current price of the machine |
+JSON object containing array **Nearby** with objects that have following fields:
+- venue_id \ integer
+- venue_name \ string
+- google_token \ string
+- latitude \ decimal
+- longitude \ decimal
+- distance_miles \ decimal
 
-### GET /machine/all
+### GET /machines/venue
 
 Get the list of machines in a specific venue.
 
@@ -87,25 +82,13 @@ Get the list of machines in a specific venue.
 
 ##### Return Value(s)
 
-JSON object(s) of GAME row(s).
-
-### ~~GET /game/waitTime — NOT FUNCTIONAL YET~~
-
-~~Returns the current average wait time for a specfic type of machine in a specific venue.~~
-
-~~QUESTION - HOW IS THIS CALC???~~
-
-##### Query Parameters
-
-| Key        | Format | Description          |
-| ---------- | ------ | -------------------- |
-| machine_id | int    | ID of specific venue |
-
-##### Return Value
-
-MACHINE objects.
-
-**NOT IMPLEMENTED YET**
+JSON object containing array **Machines** with objects that have following fields:
+- machine_id \ integer
+- venue_id \ integer
+- category \ string
+- base_price \ decimal
+- current_price \ decimal
+- available \ boolean
 
 ## POST Requests
 
@@ -123,11 +106,43 @@ Allow a user to login/be authenticated.
 
 ##### Return Value(s)
 
-**<u>200 OK</u>** username/password correct
+***<u>200 OK</u>*** If details correct -> User successfully logged in 
+JSON object containing array **User** with objects that have following fields:
+- user_id \ integer
+- session_cookie \ string
+Alongside array **Admin** with objects that have the following fields (if user is admin of any venues):
+- venue_id \ integer
 
-**<u>401</u>** incorrect username/password
+**<u>401</u>** Incorrect username/password
 
-### POST /user/add
+### POST /user/logout
+
+Allow a user to log out.
+
+##### Request Body
+
+| Key             | Format     | Description                |
+| --------------- | ---------- | -------------------------- |
+| user_id         | int        | ID of user to logout       |
+| session_cookie  | String(24) | Session cookie of user     |
+
+##### Return Value(s)
+
+**Successful logout -- Valid user_id and session_cookie**
+JSON object containing array **User** with objects that has the following fields:
+- logged_out \ integer (should == 1)
+
+**Invalid user_id/session_cookie pair**
+<u>401 Unauthorised</u> - 
+{
+    "Authentication": [
+        {
+            "auth": 0
+        }
+    ]
+}
+
+### POST /user/add (REGISTRATION)
 
 Add a new user to the service.
 
@@ -137,14 +152,48 @@ Add a new user to the service.
 | --------- | ---------- | ------------------------------- |
 | username  | String(16) | Chosen username                 |
 | password  | String(24) | Password (stored as hash in DB) |
-| name      |            | First name of user              |
-| device_id | String     |                                 |
+| name      | String     | First name of user              |
+| device_id | String     | Device ID from Firebase         |
 
 ##### Return Value(s)
 
 ***<u>200 OK</u>*** User successfully added
+JSON object containing array **User** with objects that have following fields:
+- user_id \ integer
+- session_cookie \ string
 
-**<u>500 Internal Server Error</u>** Username already exists
+**<u>500 Internal Server Error</u>** Username already exists [CATCH ONLY THIS]
+
+### POST /venues/admin
+
+Returns a list of venues that the user is admin for.
+
+##### Request Body
+
+| Key             | Format     | Description                     |
+| --------------- | ---------- | ------------------------------- |
+| user_id         | String(16) | Chosen username                 |
+| session_Cookie  | String(24) | Session cookie for user         |
+
+##### Return Value(s)
+
+**Valid user_id and session_cookie**
+JSON object containing array **Venues** with objects that have following fields:
+- venue_id \ integer
+- venue_name \ string
+- google_token \ string
+- latitude \ decimal
+- longitude \ decimal
+
+**Invalid user_id/session_cookie pair**
+<u>401 Unauthorised</u> - 
+{
+    "Authentication": [
+        {
+            "auth": 0
+        }
+    ]
+}
 
 ### POST /queue/add
 
@@ -152,17 +201,39 @@ Add a user to the queue — i.e. a user wants to play a game.
 
 ##### Request Body
 
-| Key            | Format   | Description                                                	   |
+| Key            | Format   | Description                                                	         |
 | -------------- | -------- | -------------------------------------------------------------------- |
-| user_id        | int      | ID of user                                                	   |
-| machine_id   	 | int      | Type of machine the user wants to play on         	           |
-| time_requested | UNIXTIME | Time user wants to play. <br /> 0 = ASAP		                   |
+| user_id        | int      | ID of user                                                	         |
+| machine_id   	 | int      | Type of machine the user wants to play on         	                 |
+| time_requested | UNIXTIME | Time user wants to play. <br /> 0 = ASAP		                         |
 | matchmaking    | int      | If the user wants to be matched.<br />**0** for no, **1** for yes.   |
-| num_players    | int      | Number of players that are requesting to play.              	   |
+| num_players    | int      | Number of players that are requesting to play.              	       |
+| session_cookie | string   | Session cookie of the user to add.                                   |
 
 ##### Return Value(s)
 
-**<u>200 OK</u>** User successfully added to queue
+**Valid user_id and session_cookie**
+<u>200 OK</u>
+JSON object containing array **Game** with object that has following fields:
+- game_id \ int
+- user_id \ int
+- time_add \ TIME
+- time_start \ TIME
+- time_end \ TIME
+- num_players \ int
+- machine_id \ int
+- matchmaking \ int
+- time_requested \ time
+
+**Invalid user_id/session_cookie pair**
+<u>401 Unauthorised</u> - 
+{
+    "Authentication": [
+        {
+            "auth": 0
+        }
+    ]
+}
 
 ### POST /machine/add
 
