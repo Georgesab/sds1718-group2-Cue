@@ -40,11 +40,9 @@ app.use(bodyParser.json());
 app.use(forceSsl);
 
 ///////////////////////////////////////////////// HELPER/REUSABLE FUNCTIONS
+// Used to authenticate a user with the session_cookie
 function authentication(user_id, session_cookie, next, callback) {
-
-	console.log(user_id);
-	console.log(session_cookie);
-
+	
 	var auth_query = (SAN
 		
 		`SELECT user_id, session_cookie FROM USER WHERE user_id = ${user_id} && session_cookie=${session_cookie};`
@@ -52,14 +50,46 @@ function authentication(user_id, session_cookie, next, callback) {
 
 	connection.query(auth_query, (err,result,fields) => {
 		if(err || result === undefined || result.length == 0 || result == null) {
-			console.log(result);
 			console.log("AUTH DENIED");
 			callback(null, {"auth":0})
 		}
 		else {
-			console.log(result);
 			console.log("AUTHENTICATION");
 			callback(null, {"auth":1});
+		}
+	})
+}
+
+// Used to authenticate a user with the session_cookie && check they are the admin of the venue they're trying to modify
+function authentication_admin(user_id, session_cookie, venue_id, next, callback) {
+
+	var auth_query = (SAN
+		`SELECT user_id, session_cookie FROM USER WHERE user_id = ${user_id} && session_cookie=${session_cookie};`
+	);
+
+	var admin_query = (SAN
+		`SELECT * FROM ADMIN WHERE user_id = ${user_id} && venue_id=${venue_id};`
+	);
+
+	connection.query(auth_query, (err_auth, result_auth, fields) => {
+		if(err_auth || result_auth === undefined || result_auth.length == 0 || result_auth == null) {
+			console.log("AUTH DENIED");
+			callback(null, {"auth":0})
+		}
+		else {
+
+			connection.query(admin_query, (err_admin, result_admin, fields) => {
+
+				if(err_admin || result_admin === undefined || result_admin.length == 0 || result_admin == null) {
+					console.log("AUTH DENIED");
+					callback(null, {"auth":0})
+				}
+				else {
+					console.log("AUTHENTICATION");
+					callback(null, {"auth":1});	
+				}
+
+			})
 		}
 	})
 }
@@ -74,26 +104,6 @@ app.get('/', ( request, response, next) => {
 	//if(err) console.log(err);
 })
 
-app.post('/test', (request, response, next) => {
-
-	var user_id = parseInt(request.body.user_id);
-	var session_cookie = request.body.session_cookie;
-
-	console.log(user_id + "..." + session_cookie);
-
-	authentication(user_id, session_cookie, next, (err, result) => {
-		console.log("yas");
-		console.log(result);
-
-		if(result.auth == 1) {
-			response.status(200);
-			response.send("AUTHORISED");
-		}
-		else {
-			response.sendStatus(401);
-		}
-	});
-})
 
 // Get all games/specific game currently IN queue
 app.get('/queue', (request, response, next) => {
@@ -348,7 +358,6 @@ app.post('/user/logout', (request, response, next) => {
 	var session_cookie = request.body.session_cookie;
 	
 	var logout_query = (SAN
-		
 		`UPDATE USER SET session_cookie = '' WHERE user_id = ${user_id};`
 	);
 
@@ -390,11 +399,11 @@ app.post('/user/add', (request, response, next) => {
 	// HASH PASSWORD
 	bcrypt.hash(password, saltRounds, function(err, hash) {
 		
-		var sql = "INSERT INTO `USER` (username, password_hash, name, device_id, session_cookie) VALUES (?,?,?,?, ?); SELECT last_insert_id() AS user_id;";
+		var add_user_query = "INSERT INTO `USER` (username, password_hash, name, device_id, session_cookie) VALUES (?,?,?,?, ?); SELECT last_insert_id() AS user_id;";
 		var inserts = [username, hash, name, device_id, session_cookie];
-		sql = SQL.format(sql, inserts);
+		add_user_query = SQL.format(add_user_query, inserts);
 
-		connection.query(sql, (err, result) => {
+		connection.query(add_user_query, (err, result) => {
 	
 			if(err) {
 				next(err);
@@ -402,7 +411,6 @@ app.post('/user/add', (request, response, next) => {
 			else {
 
 				response.json({User:[{"user_id": result[1][0].user_id, "session_cookie": session_cookie}]});
-
 				console.log("POST /user/add: Added new user - " + username);
 			}
 
@@ -430,6 +438,7 @@ app.post('/venues/admin', (request, response, next) => {
 				}
 				else {
 					response.json({"Venues": result})
+					console.log("POST /venues/admin: Listed all venues that user_id:" + user_id + " is admin for.");
 				}
 			})
 		}
@@ -505,71 +514,82 @@ app.post('/machine/add', (request, response, next) => {
 	var category = request.body.category;
 	var base_price = parseInt(request.body.base_price);
 
+	var user_id = parseInt(request.body.user_id);
+	var session_cookie = request.body.session_cookie;
+
 	// Check whether category exists yet for that venue.
 	var query = (SAN
 			`SELECT  machine_id FROM MACHINE
 			WHERE venue_id=${venue_id}
 			AND category=${category};`
-			);
+	);
 
-	// TESTING
-	connection.query(query, (err, result) => {
-		if (err) {
-			next(err);
-		}
-		else {
-			//response.sendStatus(200);
-			// If category doesn't exist yet, make a queue for it.
-			if (result.length == 0) {
-				var query2 = (SAN
-					`INSERT INTO QUEUE(venue_id, category)
-					VALUES(${venue_id}, ${category});`
-				);
+	authentication_admin(user_id, session_cookie, venue_id, next, (err, auth_result) => {
 
-				connection.query(query2, (err2, result2) => {
-					if (err2) {
-						next(err2);
-					}
-					else {
-						console.log("POST /machine/add: Added new queue.");
-					}
-				})
-			}
-
-			// Make new machine record.
-			var query2 = (SAN
-				`INSERT INTO
-					MACHINE(venue_id, category, base_price, current_price)
-					VALUES(${venue_id}, ${category}, ${base_price}, ${base_price});`
-			);
-
-			connection.query(query2, (err2, result2) => {
-				if (err2) {
-					next(err2);
+		if(auth_result.auth == 1) {
+			
+			// TESTING
+			connection.query(query, (err, result) => {
+				if (err) {
+					next(err);
 				}
 				else {
-					query3 = (SAN
-              					`SELECT machine_id FROM MACHINE
-                                        			WHERE machine_id=last_insert_id();`
-                        		);
+					
+					// If category doesn't exist yet, make a queue for it.
+					if (result.length == 0) {
+						var query2 = (SAN
+						`INSERT INTO QUEUE(venue_id, category)
+						VALUES(${venue_id}, ${category});`
+						);
 
-                        		connection.query(query3, (err3, result3) => {
-                                		if (err3) {
-                                		        next(err3);
-                                		}
-                                		else {
-                                		        response.json({Machine:result3});
-                                			console.log("POST /machine/add: Added new machine");
+						connection.query(query2, (err2, result2) => {
+							if (err2) {
+								next(err2);
+							}
+							else {
+								console.log("POST /machine/add: Added new queue.");
+							}
+						})
+					}
+
+					// Make new machine record.
+					var query2 = (SAN
+						`INSERT INTO
+							MACHINE(venue_id, category, base_price, current_price)
+							VALUES(${venue_id}, ${category}, ${base_price}, ${base_price});`
+					);
+
+					connection.query(query2, (err2, result2) => {
+						if (err2) {
+							next(err2);
 						}
-                        		})
+						else {
+							query3 = (SAN
+										`SELECT machine_id FROM MACHINE
+															WHERE machine_id=last_insert_id();`
+							);
+
+							connection.query(query3, (err3, result3) => {
+								if (err3) {
+									next(err3);
+								}
+								else {
+									response.json({Machine:result3});
+									console.log("POST /machine/add: Added new machine");
+								}
+							})
+						}
+					})
 				}
 			})
-
 		}
-	});
-
-
-
+		else {
+			console.log("POST /queue/add: Authentication Failed");
+			response.status(401);
+			response.json({"Authentication":[{auth:0}]});
+		}
+	});		
+});
 
 
 //	var sql = "INSERT INTO `MACHINE` (venue_id, category, base_price, current_price) VALUES (?,?,?,?);"
@@ -600,7 +620,6 @@ app.post('/machine/add', (request, response, next) => {
 //		}
 //	});
 
-})
 
 
 ///////////////////////////////////////////////// PUT REQUESTS
@@ -648,8 +667,6 @@ app.put('/machine/edit', (request, response, next) => {
 			console.log("PUT /machine/edit: Update machine");
 		}
 	});
-
-
 })
 
 
@@ -705,8 +722,6 @@ app.put('/queue/gameEnd', (request, response, next) => {
 
 			//console.log(result[2]);
 			var resuu = result[2][0].device_id;
-
-
 			var FCM = require('fcm-push');
 
 			var serverKey = 'AAAA7qf1S-s:APA91bHj07GD0akUObgNBy8VnF2HGjrgZ5OJRtaBTmK3yTS_aYQV3vnlbE75laH3GOcg_FTwe2aYosIFC3mXDkFUxTO4N-yJe2Zda31uQUyxod73FGSPBFUIF_7uzDIQ34IiCi_kGewV';
@@ -742,49 +757,40 @@ app.put('/user/deviceid', (request, response, next) => {
 	var user_id = parseInt(request.body.user_id);
 	var device_id = request.body.device_id;
 
-	var sql = "UPDATE USER SET device_id = ? WHERE user_id = ?"
-	var inserts = [device_id, user_id];
+	var deviceid_query = (SAN
+		`UPDATE USER SET device_id = ${device_id} WHERE user_id = ${user_id};`
+	);
 
-	connection.query(sql, (err, result) => {
+	authentication(user_id, session_cookie, next, (err, auth_result) => {
 
-		if(err) {
-			next(err);
+		if(auth_result.auth == 1) {
+			
+			connection.query(deviceid_query, (err, result) => {
+
+				if(err) {
+					next(err);
+				}
+				else {
+					response.sendStatus(200);
+					console.log("POST /user/deviceid: Updated device ID for user " + user_id)
+				}
+			})
 		}
 		else {
-			response.sendStatus(200);
-			console.log("POST /user/deviceid: Updated device ID for user " + user_id)
+			response.status(401);
+			response.json({"Authentication":[{auth:0}]});
 		}
-
-	})
+	});
 
 })
 
 
-///////////////////////////////////////////////// MISC
-
-var auth = function (req, res, next) {
-  var user = basicAuth(req);
-  if (!user || !user.name || !user.pass) {
-    res.set('WWW-Authenticate', 'Basic realm="This pages requires logging in to access"');
-    res.sendStatus(401);
-    return;
-  }
-  if (user.name === 'idk' && user.pass === 'blockchain') {
-    next();
-  } else {
-    res.set('WWW-Authenticate', 'Basic realm="This pages requires logging in to access"');
-    res.sendStatus(401);
-    return;
-  }
-}
-
-
-// Start listening on the current port
+///////////////////////////////////////////////// SERVER
+// Start listening on HTTP PORT
 app.listen(port, (err) => {
 	if(err) {
 		return console.log('Something bad happened: ', err);
 	}
-
 	console.log("Server started. Now listening on port " + port);
 })
 
@@ -795,7 +801,7 @@ app.use(function(error, request, response, next) {
 	console.log(error);
     // Send an error message to the user.
 	response.status(500).send(error.message);
-
 });
 
+// Listen on HTTPS port
 https.createServer(options, app).listen(443);
