@@ -96,6 +96,7 @@ function authentication_admin(user_id, session_cookie, venue_id, next, callback)
 
 ///////////////////////////////////////////////// GET REQUESTS
 
+app.use(express.static(__dirname + '/public'));
 // GET request -- webpage
 app.get('/', ( request, response, next) => {
 	response.sendFile('/index.html', {root: 'public'});

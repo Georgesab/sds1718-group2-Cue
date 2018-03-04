@@ -1,0 +1,33 @@
+#cue {
+    margin: auto;
+    font-size: 15em;
+    color: #42a446;
+    font-family: 'Nunito', sans-serif;
+    display: inline;
+    text-align: center;
+}
+
+#dot {
+    margin: auto;
+    font-size: 15em;
+    color: #fa050a;
+    font-family: 'Nunito', sans-serif;
+    display: inline;
+    text-align: center;
+}
+
+#logo {
+    text-align: center; 
+}
+
+.tag {
+    margin-top:5px;
+    font-size: 5em;
+    font-family: 'Nunito', sans-serif;
+    text-align: center;
+}
+
+#soon {
+    padding-top: 150px;
+    font-size: 3em;
+}
