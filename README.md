@@ -15,7 +15,7 @@
 **mysql**
 ​	<u>username</u>: blockchain
 ​	<u>password</u>: rosecolouredboy
-​	<u>database</u>: SQL1
+​	<u>database</u>: SDS1
 
 # HTTP Endpoints
 
@@ -24,7 +24,6 @@ Server that provides endpoints to modify a mariaDB database on the hosting machi
 All body requests should use **x-www-form-urlencoded**
 
 All return values if not a default HTTP status code are in **json**.
-
 
 
 ## GET Requests
@@ -241,16 +240,31 @@ Add a completely new type of machine to a specific venue
 
 ##### Request Body
 
-| Key        | Format  | Description                      |
-| ---------- | ------- | -------------------------------- |
-| venue_id   | int     | ID of venue                      |
-| category   | string  | Type of machine (e.g. pool)      |
-| total      | int     | Number of this machine available |
-| base_price | decimal | Start price                      |
+| Key               | Format  | Description                      |
+| ----------------- | ------- | -------------------------------- |
+| venue_id          | int     | ID of venue                      |
+| category          | string  | Type of machine (e.g. pool)      |
+| total             | int     | Number of this machine available |
+| base_price        | decimal | Start price                      |
+| user_id           | int     | ID of the admin user             |
+| session_cookie    | strng   | Session cookie of admin user     |
 
 ##### Return Value(s)
 
-JSON object of MACHINE row for newly created machine (use to get machine_id)
+**Valid user_id and session_cookie -- USER IS ADMIN OF VENUE**
+<u>200 OK</u>
+JSON object containing array **Machine** with object that has following fields:
+- machine_id \ int
+
+**Invalid user_id/session_cookie pair -- OR USER NOT ADMIN OF VENUE**
+<u>401 Unauthorised</u> - 
+{
+    "Authentication": [
+        {
+            "auth": 0
+        }
+    ]
+}
 
 ## PUT Requests
 
@@ -260,12 +274,14 @@ Edit a machine - e.g. change the default price or the number in the venue.
 
 ##### Request Body
 
-| Key        | Format  | Description                                                  |
-| ---------- | ------- | ------------------------------------------------------------ |
-| machine_id | int     | ID of machine to edit                                        |
-| venue_id   | Int     | ID of venue where the machine is                             |
-| total      | int     | New number of machines.<br />Set to 0 to keep current value.. |
-| base_price | decimal | New default price.<br />Set to 0 to keep current value.      |
+| Key               | Format  | Description                                                  |
+| ----------------- | ------- | ------------------------------------------------------------ |
+| machine_id        | int     | ID of machine to edit                                        |
+| venue_id          | Int     | ID of venue where the machine is                             |
+| total             | int     | New number of machines.<br />Set to 0 to keep current value..|
+| base_price        | decimal | New default price.<br />Set to 0 to keep current value.      |
+| user_id           | int     | ID of the admin user                                         |
+| session_cookie    | strng   | Session cookie of admin user                                 |
 
 ##### Return Value(s)
 
@@ -277,12 +293,14 @@ Confirm the presence of a user/start the game.
 
 ##### Request Body
 
-| Key     | Format | Description |
-| ------- | ------ | ----------- |
-| user_id | int    | ID of user  |
-| game_id | int    | ID of game  |
+| Key               | Format | Description               |
+| ----------------- | ------ | ------------------------- |
+| user_id           | int    | ID of user                |
+| session_cookie    | strng  | Session cookie of user    |
+| game_id           | int    | ID of game                |
 
 ##### Return Value(s)
+TBA
 
 ### PUT /queue/gameEnd
 
@@ -290,13 +308,15 @@ Confirm game end.
 
 ##### Request Body
 
-| Key     | Format | Description |
-| ------- | ------ | ----------- |
-| user_id | int    | ID of user  |
-| game_id | int    | ID of game  |
+| Key               | Format | Description               |
+| ----------------- | ------ | ------------------------- |
+| user_id           | int    | ID of user                |
+| session_cookie    | strng  | Session cookie of user    |
+| game_id           | int    | ID of game                |
 
 ##### Return Value(s)
 
+TBA
 **<u>200 OK</u>** Successfully updated
 
 ### PUT /user/deviceid
