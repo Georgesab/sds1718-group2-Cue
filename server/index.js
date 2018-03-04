@@ -1,4 +1,3 @@
-
 var https = require('https');
 var fs = require('fs');
 var forceSsl = require('express-force-ssl');
@@ -41,13 +40,29 @@ app.use(bodyParser.json());
 app.use(forceSsl);
 
 ///////////////////////////////////////////////// HELPER/REUSABLE FUNCTIONS
+function authentication(user_id, session_cookie, next, callback) {
 
+	console.log(user_id);
+	console.log(session_cookie);
 
+	var auth_query = (SAN
+		
+		`SELECT user_id, session_cookie FROM USER WHERE user_id = ${user_id} && session_cookie=${session_cookie};`
+	);
 
-
-
-
-
+	connection.query(auth_query, (err,result,fields) => {
+		if(err || result === undefined || result.length == 0 || result == null) {
+			console.log(result);
+			console.log("AUTH DENIED");
+			callback(null, {"auth":0})
+		}
+		else {
+			console.log(result);
+			console.log("AUTHENTICATION");
+			callback(null, {"auth":1});
+		}
+	})
+}
 
 ///////////////////////////////////////////////// GET REQUESTS
 
@@ -57,7 +72,27 @@ app.get('/', ( request, response, next) => {
 	console.log("GET: Served /public/index.html");
 
 	//if(err) console.log(err);
+})
 
+app.post('/test', (request, response, next) => {
+
+	var user_id = parseInt(request.body.user_id);
+	var session_cookie = request.body.session_cookie;
+
+	console.log(user_id + "..." + session_cookie);
+
+	authentication(user_id, session_cookie, next, (err, result) => {
+		console.log("yas");
+		console.log(result);
+
+		if(result.auth == 1) {
+			response.status(200);
+			response.send("AUTHORISED");
+		}
+		else {
+			response.sendStatus(401);
+		}
+	});
 })
 
 // Get all games/specific game currently IN queue
@@ -123,7 +158,7 @@ app.get('/venues/nearby', (request, response, next) => {
 
 })
 
-
+/*
 // Get current price of a certain machine in a specific venue to show the user.
 app.get('/machine/price', (request, response, next) => {
 
@@ -144,10 +179,11 @@ app.get('/machine/price', (request, response, next) => {
 		}
 	})
 })
+*/
 
 
 // Get the list of machines in a specific venue.
-app.get('/machines/all', (request, response, next) => {
+app.get('/machines/venue', (request, response, next) => {
 
 	var venue_id = parseInt(request.query.venue_id);
 
@@ -191,7 +227,6 @@ app.get('/venue/wait', (request, response, next) => {
 
 })
 
-
 // See if a user is responsible for a venue
 app.get('/user/admin', (request, response, next) => {
 
@@ -216,10 +251,7 @@ app.get('/user/admin', (request, response, next) => {
 			//response.json([{"user_id": result[1][0].user_id}]);
 
 		}
-
-
 	})
-
 })
 
 // Get details for a specific venue
@@ -256,12 +288,11 @@ app.post("/user/login", (request, response, next) => {
 	var password = request.body.password;
 	var device_id = request.body.device_id;
 
-	var sql = "SELECT user_id, password_hash FROM USER WHERE username = ?";
-	var inserts = [username, username];
-	sql = SQL.format(sql, inserts); 
+	var login_query = (SAN
+		`SELECT user_id, password_hash FROM USER WHERE username = ${username};`
+	);
 
-
-	connection.query(sql, (err, result, fields) => {
+	connection.query(login_query, (err, result, fields) => {
 
 		if(err) {
 			next(err);
@@ -283,7 +314,7 @@ app.post("/user/login", (request, response, next) => {
 					// response.sendStatus(200);
 
 					var session_cookie = uuidv1();
-					console.log(session_cookie);
+
 					var sql = "UPDATE USER SET device_id = ?, session_cookie = ? WHERE user_id = ?; SELECT * FROM ADMIN WHERE user_id = ?;"
 					var inserts = [device_id, session_cookie, logged_in_user, logged_in_user];
 					sql = SQL.format(sql, inserts); 
@@ -314,29 +345,37 @@ app.post("/user/login", (request, response, next) => {
 app.post('/user/logout', (request, response, next) => {
 
 	var user_id = parseInt(request.body.user_id);
-	// var session_cookie = request.body.session_id;
-
-	var sql = "UPDATE USER SET session_cookie = '' WHERE user_id = ?;"
+	var session_cookie = request.body.session_cookie;
 	
-	var inserts = [user_id];
-	sql = SQL.format(sql, inserts);
+	var logout_query = (SAN
+		
+		`UPDATE USER SET session_cookie = '' WHERE user_id = ${user_id};`
+	);
 
-	connection.query(sql, (err, result, fields) => {
+	authentication(user_id, session_cookie, next, (err, auth_result) => {
 
-		if(err) {
-			next(err);
-			console.log(err);
+		if(auth_result.auth == 1) {
+			
+			connection.query(logout_query, (err, result, fields) => {
+
+				if(err) {
+					next(err);
+					console.log(err);
+				}
+				else {
+					//response.send(result);
+					//response.sendStatus(200);
+					console.log("POST /user/logout: User: " + user_id + " logged out!")
+					response.json({"User":[{logged_out:1}]});
+		
+				}
+			})
 		}
 		else {
-			//response.send(result);
-
-			//response.sendStatus(200);
-			console.log("POST /user/logout: User: " + user_id + " logged out!")
-
-			response.json({"user": "logged out"});
-
+			response.status(401);
+			response.json({"Authentication":[{auth:0}]});
 		}
-	})
+	});
 })
 
 // Add a new user to the service.
@@ -371,16 +410,34 @@ app.post('/user/add', (request, response, next) => {
 	})
 })
 
+app.post('/venues/admin', (request, response, next) => {
+	
+	var user_id = request.body.user_id;
+	var session_cookie = request.body.session_cookie;
 
-app.put('/queue/edit', (request, response, next) => {
+	var admin_query = (SAN
+		
+		`SELECT V.venue_id, venue_name, google_token, latitude, longitude FROM VENUE V INNER JOIN ADMIN A ON V.venue_id=A.venue_id WHERE user_id = ${user_id};`
+	);
 
-	// EDIT QUEUE TIME
-	// 
-	var user_id = parseInt(request.body.user_id);
-	var game_id = praseInt(request.body.game_id);
-	var time_requested = request.body.time_requested;
+	authentication(user_id, session_cookie, next, (err, auth_result) => {
 
-
+		if(auth_result.auth == 1) {
+			
+			connection.query(admin_query, (err,result,fields) => {
+				if(err) {
+					next(err);
+				}
+				else {
+					response.json({"Venues": result})
+				}
+			})
+		}
+		else {
+			response.status(401);
+			response.json({"Authentication":[{auth:0}]});
+		}
+	});
 
 })
 
@@ -408,28 +465,35 @@ app.post('/queue/add', (request, response, next) => {
 		time_requested_ds = new Date(time_requested * 1000);
 	}
 
-	//var sql = "INSERT INTO `GAME` (user_id, time_add, number_players, machine_id, matchmaking) VALUES (?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM `USERS`) AS bob)+1)";
-	var sql = "SELECT * FROM USER where user_id = ?; INSERT INTO `GAME` (user_id, time_add, time_requested, machine_id, matchmaking, num_players, queue_pos) VALUES (?, ?, ?, ?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM GAME AS get_queue WHERE queue_pos > 0 AND machine_id = ?) AS num_queue)+1); SELECT * FROM GAME WHERE game_id = last_insert_id();";
-	
-	
-	
+	var queue_add_query = "SELECT * FROM USER where user_id = ?; INSERT INTO `GAME` (user_id, time_add, time_requested, machine_id, matchmaking, num_players, queue_pos) VALUES (?, ?, ?, ?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM GAME AS get_queue WHERE queue_pos > 0 AND machine_id = ?) AS num_queue)+1); SELECT * FROM GAME WHERE game_id = last_insert_id();";	
 	var inserts = [user_id, user_id, time_add, time_requested_ds, machine_id, matchmaking, num_players, machine_id];
-	sql = SQL.format(sql, inserts);
+	queue_add_query = SQL.format(queue_add_query, inserts);
 
-	connection.query(sql, (err, result) => {
-		if(err) {
-			next(err);
+	authentication(user_id, session_cookie, next, (err, auth_result) => {
+
+		if(auth_result.auth == 1) {
+			
+			connection.query(queue_add_query, (err, queue_add_result) => {
+				if(err) {
+					next(err);
+				}
+				else {
+					
+					console.log(queue_add_result);
+					//// CHECK THE SESSION COOKIE
+		
+					// Send 200 status back
+					console.log(queue_add_result[1]);
+					response.json({"Game":[queue_add_result[2][0]]});
+					console.log("POST /queue/add: Added user to queue");
+				}
+			});
+
 		}
 		else {
-			
-			console.log(result);
-			//// CHECK THE SESSION COOKIE
-
-			// Send 200 status back
-			console.log(result[1]);
-			//response.sendStatus(200);
-			response.json({game:[result[1][0]]});
-			console.log("POST /queue/add: Added user to queue");
+			console.log("POST /queue/add: Authentication Failed");
+			response.status(401);
+			response.json({"Authentication":[{auth:0}]});
 		}
 	});
 })
@@ -714,17 +778,6 @@ var auth = function (req, res, next) {
   }
 }
 
-app.all("/config*", auth);
-
-app.get("/config", function (req, res) {
-	res.send("CONFIG PAGE FOR THE SERVER/DATABASE");
-	console.log("GET: Served dummy authentication page");
-});
-
-app.get("/config/stats", function (req, res) {
-	res.send("CONFIG PAGE FOR STATS");
-	console.log("GET: Served dummy stats page");
-});
 
 // Start listening on the current port
 app.listen(port, (err) => {
