@@ -95,35 +95,6 @@ app.get('/queue', (request, response, next) => {
 	})
 })
 
-app.get('/venues/nearby', (request, response, next) => {
-
-	var cur_lat = parseFloat(request.query.latitude);
-	var cur_long = parseFloat(request.query.longitude);
-
-	var nearby_query = (SAN
-		
-		`SELECT *, (3959 * acos(cos(radians(${cur_lat})) * cos(radians(latitude)) * cos(radians(longitude) - radians(${cur_long})) + sin(radians(${cur_lat})) * sin(radians(latitude)))) AS distance_miles
-		FROM VENUE 
-		ORDER BY distance_miles
-		LIMIT 0,5;`
-
-	);
-
-	//SELECT venue_name, latitude, longitude,  (3959 * acos(cos(radians(-1.928342) ) * cos(radians(latitude) ) * cos(radians(longitude) - radians(52.446729) ) + sin(radians(-1.928342)) * sin(radians(latitude)))) AS distance FROM VENUE ORDER BY distance;
-
-	connection.query(nearby_query, (err,result,fields) => {
-		if(err) {
-			next(err);
-		}
-		else {
-			//console.log(result);
-			response.json({"Nearby": result})
-		}
-	})
-
-})
-
-
 // Get current price of a certain machine in a specific venue to show the user.
 app.get('/machine/price', (request, response, next) => {
 
@@ -733,8 +704,6 @@ app.listen(port, (err) => {
 	}
 
 	console.log("Server started. Now listening on port " + port);
-})
-
 // Error handling
 app.use(function(error, request, response, next) {
     console.log("Error handler: ", error.message);
