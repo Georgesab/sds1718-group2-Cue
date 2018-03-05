@@ -145,6 +145,9 @@ app.get('/venues/nearby', (request, response, next) => {
 
 	var cur_lat = parseFloat(request.query.latitude);
 	var cur_long = parseFloat(request.query.longitude);
+	
+	console.log(cur_lat);
+	console.log(cur_long);
 
 	var nearby_query = (SAN
 		
@@ -451,6 +454,56 @@ app.post('/venues/admin', (request, response, next) => {
 
 })
 
+// Allows a user to join the queue. Replaces /queue/add in conjunction with queue/book.
+app.post('/queue/join', (request, response, next) => {
+
+	// Parse request parameters.
+	var user_id = parseInt(request.body.user_id);
+	var machine_id = parseInt(request.body.machine_id);
+	var session_cookie = request.body.session_cookie;
+
+	var match_required = 0;		// For later use.
+	var num_players = 2; 		// For later use.
+
+	var time_add = new Date();
+
+	// Authenticate.
+	authentication(user_id, session_cookie, next, (err, auth_result) => {
+
+		if(auth_result.auth == 1) {
+
+			// Infer category.
+        		var query_cat = (SAN
+                        	`SELECT  category FROM MACHINE
+                        	WHERE machine_id=${machine_id};`
+        		);
+
+			connection.query(query_cat, (err, result) => {
+                                if (err) {
+                                        next(err);
+                                }
+                                else {
+					var category = result[0].category;
+					response.send(category);
+					console.log("POST /queue/join: Joining queue.");
+				}
+			})
+
+
+		}
+		// In event of authentication failure:
+		else {
+			console.log("POST /queue/join: Authentication Failed");
+                        response.status(401);
+                        response.json({"Authentication":[{auth:0}]});
+		}
+	});
+
+
+})
+
+
+
 // Add a user to the queue — i.e. a user wants to play a game.
 app.post('/queue/add', (request, response, next) => {
 
@@ -482,16 +535,16 @@ app.post('/queue/add', (request, response, next) => {
 	authentication(user_id, session_cookie, next, (err, auth_result) => {
 
 		if(auth_result.auth == 1) {
-			
+
 			connection.query(queue_add_query, (err, queue_add_result) => {
 				if(err) {
 					next(err);
 				}
 				else {
-					
+
 					console.log(queue_add_result);
 					//// CHECK THE SESSION COOKIE
-		
+
 					// Send 200 status back
 					console.log(queue_add_result[1]);
 					response.json({"Game":[queue_add_result[2][0]]});
@@ -528,14 +581,13 @@ app.post('/machine/add', (request, response, next) => {
 	authentication_admin(user_id, session_cookie, venue_id, next, (err, auth_result) => {
 
 		if(auth_result.auth == 1) {
-			
-			// TESTING
+
 			connection.query(query, (err, result) => {
 				if (err) {
 					next(err);
 				}
 				else {
-					
+
 					// If category doesn't exist yet, make a queue for it.
 					if (result.length == 0) {
 						var query2 = (SAN
@@ -589,38 +641,8 @@ app.post('/machine/add', (request, response, next) => {
 			response.status(401);
 			response.json({"Authentication":[{auth:0}]});
 		}
-	});		
-});
-
-
-//	var sql = "INSERT INTO `MACHINE` (venue_id, category, base_price, current_price) VALUES (?,?,?,?);"
-//	var inserts = [venue_id, category, base_price, base_price]
-//	sql = SQL.format(sql, inserts);
-
-//	connection.query(sql, (err, result) => {
-//		if(err) {
-//			next(err);
-//		}
-//		else {
-//
-//			// Now get machine_id of the machine that was just added
-//			var sql = "SELECT * FROM MACHINE WHERE machine_id=last_insert_id();"
-//			
-//			connection.query(sql, (err, result2) => {
-//				if(err) {
-//					next(err);
-//				}
-//				else {
-//					// Send 200 status back
-//					//response.sendStatus(200);
-//					response.json({Machine:result2});
-//					//response.send(result2)
-//					console.log("POST /machine/add: Added new machine");
-//				}
-//			})
-//		}
-//	});
-
+	});
+})
 
 
 ///////////////////////////////////////////////// PUT REQUESTS
