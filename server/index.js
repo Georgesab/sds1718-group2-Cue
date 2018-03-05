@@ -487,9 +487,24 @@ app.post('/queue/join', (request, response, next) => {
                                 }
                                 else {
 					var queue_id = result[0].queue_id;
-					response.json({Queue:result});
-					console.log("POST /queue/join: Joining queue:");
-					console.log(result);
+
+					var query_newGame = (SAN
+							`INSERT INTO 
+								GAME(user_id, state, time_add, wait_id)
+								VALUES(${user_id}, 0, ${time_add}, ${queue_id});`
+					);
+
+					connection.query(query_newGame, (err2, result2) => {
+						if (err2) {
+							next(err2);
+						}
+						else {
+							response.json({Queue:result});
+							console.log("POST /queue/join: Queue joined:");
+							console.log(queue_id);
+						}
+					})
+
 				}
 			})
 
