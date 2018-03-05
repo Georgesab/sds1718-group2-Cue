@@ -484,8 +484,8 @@ app.post('/queue/join', (request, response, next) => {
                                 }
                                 else {
 					var category = result[0].category;
-					response.send(category);
-					console.log("POST /queue/join: Joining queue.");
+
+					// Find queue to join.
 				}
 			})
 
@@ -608,8 +608,8 @@ app.post('/machine/add', (request, response, next) => {
 					// Make new machine record.
 					var query2 = (SAN
 						`INSERT INTO
-							MACHINE(venue_id, category, base_price, current_price)
-							VALUES(${venue_id}, ${category}, ${base_price}, ${base_price});`
+							MACHINE(venue_id, category, base_price, current_price, available)
+							VALUES(${venue_id}, ${category}, ${base_price}, ${base_price}, 1);`
 					);
 
 					connection.query(query2, (err2, result2) => {
