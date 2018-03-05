@@ -472,10 +472,13 @@ app.post('/queue/join', (request, response, next) => {
 
 		if(auth_result.auth == 1) {
 
-			// Infer category.
+			// Find correct queue.
         		var query_cat = (SAN
-                        	`SELECT  category FROM MACHINE
-                        	WHERE machine_id=${machine_id};`
+                        	`SELECT queue_id FROM QUEUE
+					WHERE (category, venue_id) IN
+						(SELECT category, venue_id FROM MACHINE
+							WHERE machine_id=${machine_id}
+						);`
         		);
 
 			connection.query(query_cat, (err, result) => {
@@ -483,9 +486,10 @@ app.post('/queue/join', (request, response, next) => {
                                         next(err);
                                 }
                                 else {
-					var category = result[0].category;
-
-					// Find queue to join.
+					var queue_id = result[0].queue_id;
+					response.json({Queue:result});
+					console.log("POST /queue/join: Joining queue:");
+					console.log(result);
 				}
 			})
 
