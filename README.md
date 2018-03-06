@@ -273,8 +273,9 @@ JSON object containing array **Queue** with object that has following fields:
 **User already in queue:**
 JSON object containing error string.
 
-**Invalid user_id/session_cookie pair -- OR USER NOT ADMIN OF VENUE**
+**Invalid user_id/session_cookie pair**
 <u>401 Unauthorised</u> -
+```
 {
     "Authentication": [
         {
@@ -282,7 +283,7 @@ JSON object containing error string.
         }
     ]
 }
-
+```
 
 ### POST /machine/add
 
