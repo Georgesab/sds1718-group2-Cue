@@ -283,10 +283,44 @@ app.get('/venue', (request, response, next) => {
 			next(err);
 		}
 		else {
-			response.json({"venue": result})
+			response.json({"venue": result});
 		}
 	})
 
+})
+
+
+// Find out which queue (if any) a particular user is in.
+app.get("/user/queue", (request, response, next) => {
+
+	var user_id = parseInt(request.query.user_id);
+
+	var query = (SAN
+		`SELECT VENUE.venue_name, QUEUE.category FROM
+			QUEUE LEFT JOIN VENUE
+				ON VENUE.venue_id=QUEUE.venue_id
+			WHERE queue_id IN
+				(SELECT wait_id FROM GAME
+					WHERE user_id=${user_id}
+					AND state!=4
+				);`
+		);
+
+	connection.query(query, (err, result) => {
+
+		if (err) {
+			next(err);
+		}
+		else {
+			if (result.length > 0) {
+				response.json({Queue:result[0]});
+			}
+			else {
+				response.json({Queue:[]});
+			}
+			console.log("GET /user/queue: Sent queue data for user " + user_id);
+		}
+	})
 })
 
 ///////////////////////////////////////////////// POST REQUESTS
@@ -355,6 +389,8 @@ app.post("/user/login", (request, response, next) => {
 
 	})
 })
+
+
 
 app.post('/user/logout', (request, response, next) => {
 
@@ -468,47 +504,68 @@ app.post('/queue/join', (request, response, next) => {
 	var time_add = new Date();
 
 	// Authenticate.
-	authentication(user_id, session_cookie, next, (err, auth_result) => {
+	authentication(user_id, session_cookie, next, (auth_err, auth_result) => {
 
 		if(auth_result.auth == 1) {
 
-			// Find correct queue.
-        		var query_cat = (SAN
-                        	`SELECT queue_id FROM QUEUE
-					WHERE (category, venue_id) IN
-						(SELECT category, venue_id FROM MACHINE
-							WHERE machine_id=${machine_id}
-						);`
-        		);
+			// Make sure user isn't already in a queue.
+			var query_inQueue = (SAN
+				`SELECT VENUE.venue_name, QUEUE.category FROM
+                        		QUEUE LEFT JOIN VENUE
+                                		ON VENUE.venue_id=QUEUE.venue_id
+                        		WHERE queue_id IN
+                                		(SELECT wait_id FROM GAME
+                                        		WHERE user_id=${user_id}
+                                        		AND state!=4
+                                		);`
+                	);
 
-			connection.query(query_cat, (err, result) => {
-                                if (err) {
-                                        next(err);
-                                }
-                                else {
-					var queue_id = result[0].queue_id;
+			connection.query(query_inQueue, (inQueue_err, inQueue_result) => {
+				if (inQueue_err) {
+					next(inQueue_err);
+				}
+				else {
+					if (inQueue_result.length > 0) {
+						response.json({Error:"User already in queue."});
+						console.log("POST /queue/join: User " + user_id + " failed to join queue.");
+					}
+					else {
+						// Find correct queue.
+        					var query_find = (SAN
+                        				`SELECT queue_id FROM QUEUE
+								WHERE (category, venue_id) IN
+									(SELECT category, venue_id FROM MACHINE
+										WHERE machine_id=${machine_id}
+									);`
+        					);
 
-					var query_newGame = (SAN
-							`INSERT INTO 
-								GAME(user_id, state, time_add, wait_id)
-								VALUES(${user_id}, 0, ${time_add}, ${queue_id});`
-					);
+						connection.query(query_find, (find_err, find_result) => {
+	                                		if (find_err) {
+	  							next(find_err);
+	                                		}
+	                                		else {
+								var queue_id = find_result[0].queue_id;
 
-					connection.query(query_newGame, (err2, result2) => {
-						if (err2) {
-							next(err2);
-						}
-						else {
-							response.json({Queue:result});
-							console.log("POST /queue/join: Queue joined:");
-							console.log(queue_id);
-						}
-					})
+								var query_newGame = (SAN
+										`INSERT INTO
+											GAME(user_id, state, time_add, wait_id)
+											VALUES(${user_id}, 0, ${time_add}, ${queue_id});`
+								);
 
+								connection.query(query_newGame, (newGame_err, newGame_result) => {
+									if (newGame_err) {
+										next(newGame_err);
+									}
+									else {
+										response.json({Queue:find_result});
+										console.log("POST /queue/join: User " + user_id + " joined queue " + queue_id + ".");
+									}
+								})
+							}
+						})
+					}
 				}
 			})
-
-
 		}
 		// In event of authentication failure:
 		else {
