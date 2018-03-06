@@ -532,8 +532,10 @@ app.post('/queue/join', (request, response, next) => {
 					else {
 						// Find correct queue.
         					var query_find = (SAN
-                        				`SELECT queue_id FROM QUEUE
-								WHERE (category, venue_id) IN
+							`SELECT queue_id, QUEUE.venue_id, venue_name, QUEUE.category FROM 
+								QUEUE LEFT JOIN VENUE
+									ON VENUE.venue_id=QUEUE.venue_id 
+								WHERE (QUEUE.category, QUEUE.venue_id) IN
 									(SELECT category, venue_id FROM MACHINE
 										WHERE machine_id=${machine_id}
 									);`

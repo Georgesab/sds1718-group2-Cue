@@ -269,6 +269,11 @@ Allow a user to join a queue with immediate effect. Venue and game category are 
 **Valid user_id and session_cookie combination:**
 JSON object containing array **Queue** with object that has following fields:
 - queue_id \ int
+- venue_id \ int
+- venue_name \ string
+- category \ string
+
+
 
 **User already in queue:**
 JSON object containing error string.
