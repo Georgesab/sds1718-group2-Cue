@@ -89,6 +89,24 @@ JSON object containing array **Machines** with objects that have following field
 - current_price \ decimal
 - available \ boolean
 
+### GET /user/queue
+
+Return which queue, if any, the specified user is currently in.
+
+##### Query Parameters
+
+| Key     | Format | Description         |
+| ------- | ------ | ------------------- |
+| user_id | int    | ID of specific user |
+
+##### Return Value(s)
+
+JSON object containing an array of *Queue*s the user is in, with the following fields:
+- venue_name \ string
+- category \ string
+
+Array will be empty if user is not in a queue.
+
 ## POST Requests
 
 ### POST /user/login
