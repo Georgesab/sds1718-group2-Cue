@@ -212,7 +212,7 @@ JSON object containing array **Venues** with objects that have following fields:
     ]
 }
 
-### POST /queue/add
+### ~~POST /queue/add~~
 
 Add a user to the queue — i.e. a user wants to play a game.
 
@@ -252,9 +252,41 @@ JSON object containing array **Game** with object that has following fields:
     ]
 }
 
+
+### POST /queue/join
+
+Allow a user to join a queue with immediate effect. Venue and game category are determined by the **machine_id** given in the request.
+
+##### Request Body
+
+| Key            | Format | Description                  |
+| -------------- | ------ | ---------------------------- |
+| user_id        | int    | ID of user to be added queue |
+| machine_id     | int    | ID of machine tapped by app  |
+| session_cookie | string | Session cookie of the user   |
+
+##### Return Value(s)
+**Valid user_id and session_cookie combination:**
+JSON object containing array **Queue** with object that has following fields:
+- queue_id \ int
+
+**User already in queue:**
+JSON object containing error string.
+
+**Invalid user_id/session_cookie pair -- OR USER NOT ADMIN OF VENUE**
+<u>401 Unauthorised</u> -
+{
+    "Authentication": [
+        {
+            "auth": 0
+        }
+    ]
+}
+
+
 ### POST /machine/add
 
-Add a completely new type of machine to a specific venue
+Add a new machine to a specific venue.
 
 ##### Request Body
 
@@ -262,10 +294,9 @@ Add a completely new type of machine to a specific venue
 | ----------------- | ------- | -------------------------------- |
 | venue_id          | int     | ID of venue                      |
 | category          | string  | Type of machine (e.g. pool)      |
-| total             | int     | Number of this machine available |
 | base_price        | decimal | Start price                      |
 | user_id           | int     | ID of the admin user             |
-| session_cookie    | strng   | Session cookie of admin user     |
+| session_cookie    | string  | Session cookie of admin user     |
 
 ##### Return Value(s)
 
