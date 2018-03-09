@@ -172,6 +172,16 @@ app.get('/venues/nearby', (request, response, next) => {
 
 })
 
+app.get("/machine/queue", (request, response, next) => {
+	
+	var machine_id = parseInt(request.query.machine_id);
+
+	var query = (SAN
+		`SELECT`); 
+
+
+})
+
 /*
 // Get current price of a certain machine in a specific venue to show the user.
 app.get('/machine/price', (request, response, next) => {
@@ -197,7 +207,7 @@ app.get('/machine/price', (request, response, next) => {
 
 
 // Get the list of machines in a specific venue.
-app.get('/machines/venue', (request, response, next) => {
+app.get('/venue/machines', (request, response, next) => {
 
 	var venue_id = parseInt(request.query.venue_id);
 
@@ -516,7 +526,7 @@ app.post('/queue/join', (request, response, next) => {
                         		WHERE queue_id IN
                                 		(SELECT wait_id FROM GAME
                                         		WHERE user_id=${user_id}
-                                        		AND state!=4
+                                        		AND state!=5
                                 		);`
                 	);
 

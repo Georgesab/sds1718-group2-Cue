@@ -69,7 +69,7 @@ JSON object containing array **Nearby** with objects that have following fields:
 - longitude \ decimal
 - distance_miles \ decimal
 
-### GET /machines/venue
+### GET /venue/machines
 
 Get the list of machines in a specific venue.
 
