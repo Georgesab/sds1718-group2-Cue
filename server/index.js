@@ -171,15 +171,15 @@ app.get('/venues/nearby', (request, response, next) => {
 
 })
 
-app.get("/machine/queue", (request, response, next) => {
+// Get details of a particular machine.
+app.get('/machine/details', (request, response, next) => {
 	
 	var machine_id = parseInt(request.query.machine_id);
-
-	var query = (SAN
-		`SELECT`); 
-
+	
+	//var query = 	
 
 })
+
 
 /*
 // Get current price of a certain machine in a specific venue to show the user.
@@ -718,11 +718,11 @@ app.post('/machine/add', (request, response, next) => {
 	var user_id = parseInt(request.body.user_id);
 	var session_cookie = request.body.session_cookie;
 
-	// Check whether category exists yet for that venue.
+	// Check whether queue exists yet for that category at that venue.
 	var query = (SAN
-			`SELECT  machine_id FROM MACHINE
-			WHERE venue_id=${venue_id}
-			AND category=${category};`
+			`SELECT queue_id, num_machines FROM QUEUE
+				WHERE venue_id=${venue_id}
+				AND category=${category};`
 	);
 
 	authentication_admin(user_id, session_cookie, venue_id, next, (err, auth_result) => {
@@ -738,8 +738,8 @@ app.post('/machine/add', (request, response, next) => {
 					// If category doesn't exist yet, make a queue for it.
 					if (result.length == 0) {
 						var query2 = (SAN
-						`INSERT INTO QUEUE(venue_id, category)
-						VALUES(${venue_id}, ${category});`
+							`INSERT INTO QUEUE(venue_id, category, num_machines)
+								VALUES(${venue_id}, ${category}, 1);`
 						);
 
 						connection.query(query2, (err2, result2) => {
@@ -750,6 +750,26 @@ app.post('/machine/add', (request, response, next) => {
 								console.log("POST /machine/add: Added new queue.");
 							}
 						})
+					// If it does, update the number of machines it has.
+					} else {
+						
+						var queue_id = result[0].queue_id;
+						var num_machines = (result[0].num_machines + 1);
+
+						var query_update = (SAN
+								`UPDATE QUEUE
+									SET num_machines=${num_machines}
+									WHERE queue_id=${queue_id};`
+						);
+
+						connection.query(query_update, (err_update, result_update) => {
+							if (err_update) {
+								next(err_update);
+							}
+							else {
+								console.log("POST /machine/add: Number of machines in queue updated.");
+							}
+						})	
 					}
 
 					// Make new machine record.
