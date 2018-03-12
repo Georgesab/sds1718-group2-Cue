@@ -419,11 +419,11 @@ Set new device ID
 ## Database = 'SDS1' 
 
 ### USER
-|
+
 | Field         | Data Type        |
 | ------------- | ---------------- |
-| user\_id      | INT (> 0)        |
- username      | VARCHAR(16)      |
+| user_id       | INT (> 0)        |
+| username      | VARCHAR(16)      |
 | password_hash | VARCHAR(256)     |
 | name          | VARCHAR(40)      |
 | games_played  | SMALLINT (>= 0)  |
@@ -436,13 +436,13 @@ Set new device ID
 | -------------- | ------------------------ |
 | game_id        | INT (> 0)   		    |
 | user_id        | INT (> 0)    	    |
-| queue_pos      | INT (>= -1)		    |
+| state          | INT (0 >= state >= 5)    |
 | time_add       | DATESTAMP (UNIX TIME)    |
-| time_requested | DATESTAMP (UNIX TIME)    |
 | time_start     | DATETIME (UNIX TIME)     |
 | time_end       | DATETIME (UNIX TIME)     |
 | num_players    | INT (> 0)  		    |
-| machine_id 	 | INT			    |
+| wait_id	 | INT (> 0)                |
+| machine_id 	 | INT (> 0)		    |
 | matchmaking	 | SMALLINT	            |
 
 ### MACHINE
@@ -467,7 +467,10 @@ Set new device ID
 | password   | VARCHAR(24) |
 
 ### QUEUE
-|
-Field     / Data Type /
-|| ---------- 
 
+| Field     | Data Type   |
+| --------- | ----------- |
+| queue_id  | INT (>0)    |
+| venue_id  | INT (>0)    |
+| category  | VARCHAR(16) 
+|
