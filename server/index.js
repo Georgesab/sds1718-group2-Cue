@@ -105,7 +105,6 @@ app.get('/', ( request, response, next) => {
 	//if(err) console.log(err);
 })
 
-
 // Get all games/specific game currently IN queue
 app.get('/queue', (request, response, next) => {
 
@@ -305,8 +304,8 @@ app.get("/user/queue", (request, response, next) => {
 
 	var user_id = parseInt(request.query.user_id);
 
-	var query = (SAN
-		`SELECT VENUE.venue_name, QUEUE.category FROM
+	var query_qid = (SAN
+		`SELECT QUEUE.queue_id, VENUE.venue_name, QUEUE.category FROM
 			QUEUE LEFT JOIN VENUE
 				ON VENUE.venue_id=QUEUE.venue_id
 			WHERE queue_id IN
@@ -316,28 +315,43 @@ app.get("/user/queue", (request, response, next) => {
 				);`
 		);
 
-	connection.query(query, (err, result) => {
+	connection.query(query_qid, (err_qid, result_qid) => {
 
-		if (err) {
-			next(err);
+		if (err_qid) {
+			next(err_qid);
 		}
 		else {
-			if (result.length > 0) {
-				response.json({Queue:result[0]});
+			if (result_qid.length > 0) {
+				var queue_id = result_qid[0].queue_id;
+
+				var query_details = (SAN
+						`SELECT * FROM
+							(SELECT COUNT(game_id) AS queue_length FROM GAME
+								WHERE wait_id=${queue_id} AND state=1) AS QL, 
+							(SELECT (AVG(TIMESTAMPDIFF(SECOND, time_start, time_end))/60) AS avg_game_duration FROM GAME
+								WHERE wait_id=${queue_id} AND state=5) AS WAIT;`
+				);
+
+				connection.query(query_details, (err_details, result_details) => {
+
+					if (err_details){
+						next(err_qid);
+					}
+					else {
+						response.json({Queue:result_qid[0], Stats:result_details[0]});
+			                        console.log("GET /user/queue: Sent queue data for user " + user_id);
+
+					}
+				})
 			}
 			else {
 				response.json({Queue:[]});
 			}
-			console.log("GET /user/queue: Sent queue data for user " + user_id);
 		}
 	})
 })
 
 ///////////////////////////////////////////////// POST REQUESTS
-
-app.post("/queue/leave", (request, response, next) => [
-	// TBA
-])
 
 // Allow a user to login/be authenticated.
 app.post("/user/login", (request, response, next) => {
@@ -588,6 +602,42 @@ app.post('/queue/join', (request, response, next) => {
 	});
 
 
+})
+
+// Allow a user to leave whichever queue they're in.
+app.post("/queue/leave", (request, response, next) => {
+
+        // Parse request parameters.
+        var user_id = parseInt(request.body.user_id);
+        var session_cookie = request.body.session_cookie;
+
+        // Authenticate.
+        authentication(user_id, session_cookie, next, (auth_err, auth_result) => {
+
+                if(auth_result.auth == 1) {
+			var query = (SAN
+				`DELETE FROM GAME WHERE
+					user_id=${user_id}
+					AND state <2;`
+			);
+
+			connection.query(query, (err, result) => {
+				if (err) {
+					next(err);
+				}
+				else {
+					console.log("POST /queue/leave: User left queue");
+					response.status(200);	
+				}
+
+			})
+		}
+		else {
+			console.log("POST /queue/leave: Authentication Failed");
+			response.status(401);
+			response.json({"Authentication":[{auth:0}]});
+		}
+	});
 })
 
 

@@ -101,11 +101,23 @@ Return which queue, if any, the specified user is currently in.
 
 ##### Return Value(s)
 
-JSON object containing an array of *Queue*s the user is in, with the following fields:
-- venue_name \ string
-- category \ string
-
-Array will be empty if user is not in a queue.
+JSON object containing an array of *Queue*s the user is in, for example:
+```
+{
+    "Queue": {
+        "queue_id": 1,
+        "venue_name": "The Soak",
+        "category": "Pool Table"
+    },
+    "Stats": {
+        "queue_length": 1,
+        "avg_game_duration": 10.64285714
+    }
+}
+```
+##### Notes
+* Array will be empty if the specified user is not in a queue.
+* `avg_game_duration` will be `NULL` if there is no previous game data from which to calculate an average. 
 
 ## POST Requests
 
