@@ -271,11 +271,11 @@ Allow a user to join a queue with immediate effect. Venue and game category are 
 
 ##### Request Body
 
-| Key            | Format | Description                  |
-| -------------- | ------ | ---------------------------- |
-| user_id        | int    | ID of user to be added queue |
-| machine_id     | int    | ID of machine tapped by app  |
-| session_cookie | string | Session cookie of the user   |
+| Key            | Format | Description                     |
+| -------------- | ------ | ------------------------------- |
+| user_id        | int    | ID of user to be added to queue |
+| machine_id     | int    | ID of machine tapped by app     |
+| session_cookie | string | Session cookie of the user      |
 
 ##### Return Value(s)
 **Valid user_id and session_cookie combination:**
@@ -301,6 +301,17 @@ JSON object containing error string.
     ]
 }
 ```
+
+### POST /queue/leave
+
+Allow a user to leave whatever queue they are currently in.
+
+##### Request Body
+
+| Key            | Format | Description                |
+| -------------- | ------ | -------------------------- |
+| user_id        | int    | ID of user to leave queue  |
+| session_cookie | string | Session cookie of the user |
 
 ### POST /machine/add
 
@@ -401,18 +412,18 @@ Set new device ID
 
 **Return Value(s)**
 
-****<u>200 OK</u>** Successfully updated**
+**200 OK** - Successfully updated**
 
 # Database
 
 ## Database = 'SDS1' 
 
 ### USER
-
+|
 | Field         | Data Type        |
 | ------------- | ---------------- |
-| user_id       | INT (> 0)        |
-| username      | VARCHAR(16)      |
+| user\_id      | INT (> 0)        |
+ username      | VARCHAR(16)      |
 | password_hash | VARCHAR(256)     |
 | name          | VARCHAR(40)      |
 | games_played  | SMALLINT (>= 0)  |
@@ -454,4 +465,9 @@ Set new device ID
 | venue_name | VARCHAR(40) |
 | username   | VARCHAR(16) |
 | password   | VARCHAR(24) |
+
+### QUEUE
+|
+Field     / Data Type /
+|| ---------- 
 

@@ -1,3 +1,4 @@
+
 var https = require('https');
 var fs = require('fs');
 var forceSsl = require('express-force-ssl');
@@ -550,7 +551,6 @@ app.post('/queue/join', (request, response, next) => {
 				}
 				else {
 					if (inQueue_result.length > 0) {
-						response.status(400);
 						response.json({Error:"User already in queue."});
 						console.log("POST /queue/join: User " + user_id + " failed to join queue.");
 					}
@@ -627,16 +627,8 @@ app.post("/queue/leave", (request, response, next) => {
 					next(err);
 				}
 				else {
-					if (result.affectedRows >= 1) {
-						console.log("POST /queue/leave: User left queue");
-						response.status(204);
-						//response.json({"Success": "User left queue."});
-					}
-					else {
-						console.log("POST /queue/leave: User attempted to leave queue they were not in.");
-                                                response.status(400);
-                                                response.json({"Error": "User was not in queue."});
-					}	
+					console.log("POST /queue/leave: User left queue");
+					response.status(200);	
 				}
 
 			})
