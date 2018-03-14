@@ -13,6 +13,7 @@ const unixTimestamp = require("unix-timestamp")
 const port = 80;
 const uuidv1 = require('uuid/v1');
 
+// Enable HTTPS
 var options = {
 	key: fs.readFileSync('/etc/letsencrypt/live/idk-cue.club/privkey.pem'),
 	cert: fs.readFileSync('/etc/letsencrypt/live/idk-cue.club/cert.pem'),
@@ -38,6 +39,11 @@ connection.connect();
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(forceSsl);
+
+// Firebase
+var serverKey = 'AAAA7qf1S-s:APA91bHj07GD0akUObgNBy8VnF2HGjrgZ5OJRtaBTmK3yTS_aYQV3vnlbE75laH3GOcg_FTwe2aYosIFC3mXDkFUxTO4N-yJe2Zda31uQUyxod73FGSPBFUIF_7uzDIQ34IiCi_kGewV';
+var FCM = require('fcm-push');
+var fcm = new FCM(serverKey);
 
 ///////////////////////////////////////////////// HELPER/REUSABLE FUNCTIONS
 // Used to authenticate a user with the session_cookie
@@ -305,7 +311,7 @@ app.get("/user/queue", (request, response, next) => {
 	var user_id = parseInt(request.query.user_id);
 
 	var query_qid = (SAN
-		`SELECT QUEUE.queue_id, VENUE.venue_name, QUEUE.category FROM
+		`SELECT QUEUE.queue_id, VENUE.venue_name, VENUE.venue_id, QUEUE.category FROM
 			QUEUE LEFT JOIN VENUE
 				ON VENUE.venue_id=QUEUE.venue_id
 			WHERE queue_id IN
@@ -387,8 +393,8 @@ app.post("/user/login", (request, response, next) => {
 
 					var session_cookie = uuidv1();
 
-					var sql = "UPDATE USER SET device_id = ?, session_cookie = ? WHERE user_id = ?; SELECT * FROM ADMIN WHERE user_id = ?;"
-					var inserts = [device_id, session_cookie, logged_in_user, logged_in_user];
+					var sql = "UPDATE USER SET device_id = ?, session_cookie = ? WHERE user_id = ?; SELECT V.venue_id, venue_name, google_token, latitude, longitude FROM VENUE V INNER JOIN ADMIN A ON V.venue_id=A.venue_id WHERE user_id = ?;"
+					var inserts = [device_id, session_cookie, logged_in_user, logged_in_user, logged_in_user];
 					sql = SQL.format(sql, inserts); 
 				
 					connection.query(sql, (err, result) => {
@@ -439,6 +445,33 @@ app.post('/user/logout', (request, response, next) => {
 					//response.send(result);
 					//response.sendStatus(200);
 					console.log("POST /user/logout: User: " + user_id + " logged out!")
+
+					// Remove from queue
+					var remove_query = (SAN
+						`DELETE FROM GAME WHERE
+							user_id=${user_id}
+							AND state <2;`
+					);
+		
+					connection.query(remove_query, (err, result) => {
+						if (err) {
+							next(err);
+						}
+						else {
+							if (result.affectedRows >= 1) {
+								console.log("POST /queue/leave: User: " + user_id + " left queue");
+								response.status(204);
+								//response.json({"Success": "User left queue."});
+							}
+							else {
+								console.log("POST /queue/leave: User attempted to leave queue they were not in.");
+														response.status(400);
+														response.json({"Error": "User: " + user_id + " was not in queue."});
+							}	
+						}
+		
+					})
+
 					response.json({"User":[{logged_out:1}]});
 		
 				}
@@ -482,6 +515,46 @@ app.post('/user/add', (request, response, next) => {
 	})
 })
 
+
+app.post('/user/history', (request, response, next) => { 
+
+	var user_id = parseInt(request.body.user_id);
+	var session_cookie = request.body.session_cookie;
+
+	var hist_query = SAN(`SELECT G.time_start, M.category, M.base_price, V.venue_name, V.google_token, V.latitude, V.longitude FROM ((GAME G INNER JOIN MACHINE M ON G.machine_id = M.machine_id) INNER JOIN VENUE V ON V.venue_id = M.venue_id) WHERE user_id = ${user_id} AND state = 5;`);
+	var hist_query_2 = "SELECT G.time_start, M.category, M.base_price, V.venue_name, V.google_token, V.latitude, V.longitude FROM (GAME G INNER JOIN MACHINE M ON G.machine_id = M.machine_id) INNER JOIN VENUE V ON V.venue_id = M.venue_id WHERE user_id = ? AND state = 5 ORDER BY G.time_start ASC;";
+	hist_query_2 = SQL.format(hist_query_2, user_id);
+	console.log(hist_query_2);
+
+	authentication(user_id, session_cookie, next, (err, auth_result) => {
+
+		if(auth_result.auth == 1) {
+
+			
+			connection.query(hist_query_2, (err, result) => {
+
+				if(err) {
+					next(err);
+				}
+				else {
+					response.json({"History": result});
+					console.log(result);
+					//console.log("POST /user/history: Returned user history for user: " + parseInt(user_id));
+				}
+		
+			})
+		}
+		else {
+			response.status(401);
+			response.json({"Authentication":[{auth:0}]});
+		}
+
+	})			
+
+})
+
+
+/*
 app.post('/venues/admin', (request, response, next) => {
 	
 	var user_id = request.body.user_id;
@@ -503,6 +576,12 @@ app.post('/venues/admin', (request, response, next) => {
 				else {
 					response.json({"Venues": result})
 					console.log("POST /venues/admin: Listed all venues that user_id:" + user_id + " is admin for.");
+
+					v
+
+
+
+
 				}
 			})
 		}
@@ -513,6 +592,7 @@ app.post('/venues/admin', (request, response, next) => {
 	});
 
 })
+*/
 
 // Allows a user to join the queue. Replaces /queue/add in conjunction with queue/book.
 app.post('/queue/join', (request, response, next) => {
@@ -556,7 +636,19 @@ app.post('/queue/join', (request, response, next) => {
 					}
 					else {
 						// Find correct queue.
-        					var query_find = (SAN
+							
+						var query_find = (SAN
+							`SELECT queue_id, QUEUE.venue_id, venue_name, QUEUE.category, (SELECT SEC_TO_TIME(AVG(TIME_TO_SEC(wait))) FROM (SELECT TIMEDIFF(time_start, time_add) AS wait FROM GAME G INNER JOIN MACHINE M on G.machine_id = M.machine_id WHERE venue_id = 1 AND state = 5) AS wait_table) AS average_wait 
+							FROM 
+							QUEUE LEFT JOIN VENUE 
+								ON VENUE.VENUE_ID=QUEUE.VENUE_ID 
+							WHERE (QUEUE.category, QUEUE.venue_id) IN 
+								(SELECT category, venue_id FROM MACHINE 
+									WHERE machine_id=${machine_id});`
+							);
+
+								/*
+						var query_find = (SAN
 							`SELECT queue_id, QUEUE.venue_id, venue_name, QUEUE.category FROM 
 								QUEUE LEFT JOIN VENUE
 									ON VENUE.venue_id=QUEUE.venue_id 
@@ -564,7 +656,8 @@ app.post('/queue/join', (request, response, next) => {
 									(SELECT category, venue_id FROM MACHINE
 										WHERE machine_id=${machine_id}
 									);`
-        					);
+							);
+						*/
 
 						connection.query(query_find, (find_err, find_result) => {
 	                                		if (find_err) {
@@ -628,12 +721,12 @@ app.post("/queue/leave", (request, response, next) => {
 				}
 				else {
 					if (result.affectedRows >= 1) {
-						console.log("POST /queue/leave: User left queue");
+						console.log("POST /queue/leave: User: " + user_id + " left queue");
 						response.status(204);
 						//response.json({"Success": "User left queue."});
 					}
 					else {
-						console.log("POST /queue/leave: User attempted to leave queue they were not in.");
+						console.log("POST /queue/leave: User: " + user_id + " attempted to leave queue they were not in.");
                                                 response.status(400);
                                                 response.json({"Error": "User was not in queue."});
 					}	
@@ -810,6 +903,30 @@ app.post('/machine/add', (request, response, next) => {
 		}
 	});
 })
+/*
+// Remove a particular machine from a venue.
+app.post('/machine/remove', (request, response, next) => {
+
+        var machine_id = parseInt(request.body.user_id);
+
+        var user_id = parseInt(request.body.user_id);
+        var session_cookie = request.body.session_cookie;
+
+
+	// Retrieve venue_id and category for the machine, for authentication.
+
+
+        // Check how many machines are in the queue.
+        var query = (SAN
+                        `SELECT num_machines FROM QUEUE
+                                WHERE venue_id=${venue_id}
+                                AND category=${category};`
+        );
+
+        authentication_admin(user_id, session_cookie, venue_id, next, (err, auth_result) => {
+
+                if(auth_result.auth == 1) {
+*/
 
 
 ///////////////////////////////////////////////// PUT REQUESTS
@@ -819,44 +936,74 @@ app.put('/machine/edit', (request, response, next) => {
 
 	var machine_id = parseInt(request.body.machine_id);
 	var venue_id = parseInt(request.body.venue_id);
-	var total = parseInt(request.body.total);
 	var base_price = parseFloat(request.body.base_price);
+	var to_delete = parseInt(request.body.to_delete);
+	var category = request.body.category;
 
-	// Base sql
-	var sql = "UPDATE MACHINE SET"
-
-	if(total != 0) {
-		sql += " total = " + connection.escape(total) + ", available = " + connection.escape(total)
-		//sql = SQL.format(sql, total, total);
-
-		if(base_price != 0) {
-			sql += ", "
-		}
-
+	if(!to_delete) {
+		to_delete = 0;
 	}
-	if(base_price != 0) {
-		sql += " base_price = " + connection.escape(base_price) + ", current_price = " + connection.escape(base_price)
-		sql = SQL.format(sql, base_price)
-	}
-	
-	sql += " WHERE machine_id = ?;";
-	
-	//var inserts = [total, total, base_price, base_price, machine_id]
-	sql = SQL.format(sql, machine_id);
 
-	console.log("MEME")
-	console.log(sql);
+	var user_id = parseInt(request.body.user_id);
+	var session_cookie = request.body.session_cookie;
 
-	connection.query(sql, (err, result) => {
-		if(err) {
-			next(err);
+	authentication_admin(user_id, session_cookie, venue_id, next, (err, auth_result) => {
+
+		if(auth_result.auth == 1) {
+
+			// Base sql
+			var sql = "UPDATE MACHINE SET"
+
+			// Base price
+			if(base_price != 0) {
+				sql += " base_price = " + connection.escape(base_price) + ", current_price = " + connection.escape(base_price)
+				//sql = SQL.format(sql, base_price)
+			}
+			
+			// Category
+			if(category != null || category !='') {
+
+				// Add comma
+				if(base_price != 0) {
+					sql += ","
+				}
+
+				sql += " category = " + connection.escape(category)
+			}
+
+			/*
+			// IF DELETING MACHINE
+			if(to_delete != 0) {
+				sql = "DELETE FROM MACHINE" 
+			}
+			*/
+
+			sql += " WHERE machine_id = ?;";
+			
+			//var inserts = [total, total, base_price, base_price, machine_id]
+			sql = SQL.format(sql, machine_id);
+			
+			console.log(sql);
+
+
+			connection.query(sql, (err, result) => {
+				if(err) {
+					next(err);
+				}
+				else {
+					// Send 200 status back
+					response.sendStatus(200);
+					console.log("PUT /machine/edit: Update machine");
+				}
+			});
+
 		}
 		else {
-			// Send 200 status back
-			response.sendStatus(200);
-			console.log("PUT /machine/edit: Update machine");
+			console.log("POST /queue/edit: Authentication Failed");
+			response.status(401);
+			response.json({"Authentication":[{auth:0}]});
 		}
-	});
+	})
 })
 
 
@@ -883,6 +1030,47 @@ app.put('/queue/gameStart', (request, response, next) => {
 			console.log("POST /queue/gameStart: Started GAME");
 		}
 	});
+})
+
+
+// REMOVE THIS WHEN CODE MOVED ELSEWHERE
+app.get('/notification/test', (request, response, next) => {
+
+	var device_id = null;//// GET USERS DEVICE_ID FROM USER TABLE IN DATABASE
+	var queue_position = 1; // GET FROM DATABASE
+
+	// Use this one when telling the user their table is ready
+	var ready_message = {
+		to: device_id_test, // required fill with device token or topics
+			data: {
+				title: 'Cue.',
+				body: 'Your table is ready!',
+				type: 'ready'
+		}
+	};
+
+	// Use this when updating a user of their position in the queue
+	var update_message = {
+		to: device_id_test, // required fill with device token or topics
+			data: {
+				title: 'Cue.',
+				body: 'Your position has changed to: ' + queue_position.toString(),
+				position: queue_position.toString(),
+				type: 'update'
+			}
+	};
+
+	// Use to send the message : swap ready_message for update_message if necessary
+	fcm.send(ready_message, function(err, response){
+		if (err) {
+			console.log("Something has gone wrong!");
+		} else {
+			console.log("Successfully sent with response: ", response);
+		}
+	});
+
+	response.send(200);
+
 })
 
 // Confirm game end.

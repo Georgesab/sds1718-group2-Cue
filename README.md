@@ -344,6 +344,40 @@ JSON object containing array **Machine** with object that has following fields:
     ]
 }
 
+### POST /user/history
+
+View the games the user has previously played.
+
+##### Request Body
+
+| Key               | Format  | Description                      |
+| ----------------- | ------- | -------------------------------- |
+| user_id           | int     | ID of the user                   |
+| session_cookie    | string  | Session cookie of user           |
+
+#### Return Value(s)
+
+**Valid user_id and session_cookie**
+<u>200 OK</u>
+JSON object containing array **History** with object that has following fields:
+- time_start \ time
+- category \ string
+- base_price \ decimal
+- venue_name \ string
+- google_token \ string
+- latitude \ decimal 
+- longitude \ decimal
+
+**Invalid user_id/session_cookie pair -- OR USER NOT ADMIN OF VENUE**
+<u>401 Unauthorised</u> - 
+{
+    "Authentication": [
+        {
+            "auth": 0
+        }
+    ]
+}
+
 ## PUT Requests
 
 ### PUT /machine/edit
@@ -356,8 +390,9 @@ Edit a machine - e.g. change the default price or the number in the venue.
 | ----------------- | ------- | ------------------------------------------------------------ |
 | machine_id        | int     | ID of machine to edit                                        |
 | venue_id          | Int     | ID of venue where the machine is                             |
-| total             | int     | New number of machines.<br />Set to 0 to keep current value..|
+| to_delete         | int     | To delete machine. 0 if nnoot, 1 if yes                      |
 | base_price        | decimal | New default price.<br />Set to 0 to keep current value.      |
+| category          | string  | New category to set                                          | 
 | user_id           | int     | ID of the admin user                                         |
 | session_cookie    | strng   | Session cookie of admin user                                 |
 
