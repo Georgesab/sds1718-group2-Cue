@@ -105,13 +105,14 @@ JSON object containing an array of *Queue*s the user is in, for example:
 ```
 {
     "Queue": {
-        "queue_id": 1,
-        "venue_name": "The Soak",
-        "category": "Pool Table"
+        "queue_id": 30,
+        "venue_name": "Cherry Red's (New Street)",
+	"venue_id": 13,
+        "category": "Skittles"
     },
     "Stats": {
-        "queue_length": 1,
-        "avg_game_duration": 10.64285714
+        "wait": 29,
+        "position": 2
     }
 }
 ```

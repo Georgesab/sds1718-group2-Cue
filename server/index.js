@@ -185,7 +185,6 @@ function getExpectedWaitTime(queue_id, next, callback) {
 				
 				var length = length_result.length;
 		                console.log("LENGTH: " + length);
-
 					
 				if (length == -1) {
 					callback(null, {"wait":-1});
@@ -198,7 +197,7 @@ function getExpectedWaitTime(queue_id, next, callback) {
 						if (num == -1) {
 							callback(null, {"wait":-1});
 						} else {
-							var wait = (dur * length) / num;
+							var wait = Math.round((dur * length) / num);
 							console.log("WAIT: " + wait);
 							callback(null, {"wait":wait});
 						}
@@ -238,8 +237,8 @@ function getQueuePosition(user_id, queue_id, next, callback) {
 	})
 }
 
-// Calculate a user's predicted waiting time from within a queue.
-function getEstimatedWaitTime(user_id, queue_id, next, callback) {
+// Calculate a user's position and predicted waiting time within a queue.
+function getUserQueueStatus(user_id, queue_id, next, callback) {
 	
 	getAvgGameDuration(queue_id, next, (err, dur_result) => {
 
@@ -266,9 +265,9 @@ function getEstimatedWaitTime(user_id, queue_id, next, callback) {
                                                 if (num == -1) {
                                                         callback(null, {"wait":-1});
                                                 } else {
-                                                        var wait = (dur * length) / num;
+                                                        var wait = Math.round((dur * length) / num);
                                                         console.log("WAIT: " + wait);
-                                                        callback(null, {"wait":wait});
+                                                        callback(null, {"wait":wait, "position":length});
                                                 }
                                         })
                                 }
@@ -284,7 +283,7 @@ app.get('/TEST', (request, response, next) => {
 	var queue_id = parseInt(request.query.queue_id);
 	var user_id = parseInt(request.query.user_id);
 	
-	getEstimatedWaitTime(user_id, queue_id, next, (err, dur_result) => {
+	getUserQueueStatus(user_id, queue_id, next, (err, dur_result) => {
 		response.send(dur_result);	
         })
  
@@ -530,24 +529,11 @@ app.get("/user/queue", (request, response, next) => {
 			if (result_qid.length > 0) {
 				var queue_id = result_qid[0].queue_id;
 
-				var query_details = (SAN
-						`SELECT * FROM
-							(SELECT COUNT(game_id) AS queue_length FROM GAME
-								WHERE wait_id=${queue_id} AND state=1) AS QL, 
-							(SELECT (AVG(TIMESTAMPDIFF(SECOND, time_start, time_end))/60) AS avg_game_duration FROM GAME
-								WHERE wait_id=${queue_id} AND state=5) AS WAIT;`
-				);
-
-				connection.query(query_details, (err_details, result_details) => {
-
-					if (err_details){
-						next(err_qid);
-					}
-					else {
-						response.json({Queue:result_qid[0], Stats:result_details[0]});
-			                        console.log("GET /user/queue: Sent queue data for user " + user_id);
-
-					}
+				getUserQueueStatus(user_id, queue_id, next, (err, result_details) => {
+					console.log(result_details);
+					response.json({"Queue":result_qid[0], "Stats":result_details});
+					console.log("GET /user/queue: Sent queue data for user " + user_id);
+					
 				})
 			}
 			else {
