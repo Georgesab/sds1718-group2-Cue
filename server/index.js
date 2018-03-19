@@ -100,6 +100,197 @@ function authentication_admin(user_id, session_cookie, venue_id, next, callback)
 	})
 }
 
+// Used to pull queue details (num in queue, place in queue, expected wait time).
+function getQueueDetails(queue_id, num_inQueue, user_id, next, callback) {
+	
+	// Check if any machines are available.
+
+	// If not:
+
+	// If so: 
+}
+
+// Calculate average game duration.
+function getAvgGameDuration(queue_id, next, callback) {
+
+	var query = (SAN
+		`SELECT (AVG(TIMESTAMPDIFF(SECOND, time_start, time_end))/60) AS dur
+			FROM GAME
+				WHERE wait_id=${queue_id} AND state=5;`
+	);
+
+	connection.query(query, (err, result, fields) => {
+		if (err){
+			console.log(err);
+			callback(null, {"dur":-1});
+		}
+		else{
+			if (result[0].dur == null) {
+				callback(null, {"dur":10});
+			}
+			else {
+				callback(null, {"dur":result[0].dur});
+			}
+		}
+	})
+}
+
+// Calculate how many users are in a queue.
+function getQueueLength(queue_id, next, callback) {
+	var query = (SAN
+		`SELECT COUNT(game_id) AS length FROM GAME
+			WHERE wait_id=${queue_id} AND state<3;`
+	);
+
+	connection.query(query, (err, result, fields) => {
+		if (err) {
+			console.log(err);
+			callback(null, {"length":-1});
+		}
+		else {
+			callback(null, {"length":result[0].length});
+		}
+	})
+}
+
+// Find how many machines supply a queue.
+function getNumMachines(queue_id, next, callback) {
+	var query = (SAN
+		`SELECT num_machines FROM QUEUE
+			WHERE queue_id=${queue_id};`
+	)
+
+	connection.query(query, (err, result, fields) => {
+		if (err) {
+			console.log(err);
+			callback(null, {"num_machines":-1});
+		} else {
+			callback(null, {"num_machines":result[0].num_machines});
+		}
+	})
+}
+
+// Calculate expected waiting time for a given queue.
+function getExpectedWaitTime(queue_id, next, callback) {
+	
+	getAvgGameDuration(queue_id, next, (err, dur_result) => {
+		
+		var dur = dur_result.dur;
+		console.log("DUR: " + dur);
+
+		if (dur == -1) {
+			callback(null, {"wait":-1});
+		} else {
+			getQueueLength(queue_id, next, (err, length_result) => {
+				
+				var length = length_result.length;
+		                console.log("LENGTH: " + length);
+
+					
+				if (length == -1) {
+					callback(null, {"wait":-1});
+				} else {
+					getNumMachines(queue_id, next, (err, num_result) => {
+						
+						var num = num_result.num_machines;	
+						console.log("NUM: " + num);
+
+						if (num == -1) {
+							callback(null, {"wait":-1});
+						} else {
+							var wait = (dur * length) / num;
+							console.log("WAIT: " + wait);
+							callback(null, {"wait":wait});
+						}
+					})
+				}					
+			})
+		}
+	})
+} 
+
+
+// Calculate a user's position within a particular queue.
+function getQueuePosition(user_id, queue_id, next, callback) {
+	
+	var query = (SAN
+		`SELECT COUNT(game_id) AS num_in_front FROM GAME
+			WHERE state<3
+			AND user_id!=${user_id}
+			AND wait_id=${queue_id}
+			AND time_add<
+				(SELECT time_add from GAME
+					WHERE user_id=${user_id}
+					AND state<3
+					AND wait_id=${queue_id}
+				);`
+	);
+
+	connection.query(query, (err, result, fields) => {
+		
+		if (err) {
+			console.log(err);
+			callback(null, {"position":-1});
+		} else {
+			var position = result[0].num_in_front + 1;
+                        callback(null, {"position":position});
+		}
+	})
+}
+
+// Calculate a user's predicted waiting time from within a queue.
+function getEstimatedWaitTime(user_id, queue_id, next, callback) {
+	
+	getAvgGameDuration(queue_id, next, (err, dur_result) => {
+
+                var dur = dur_result.dur;
+                console.log("DUR: " + dur);
+
+                if (dur == -1) {
+                        callback(null, {"wait":-1});
+                } else {
+                        getQueuePosition(user_id, queue_id, next, (err, length_result) => {
+
+                                var length = length_result.position;
+                                console.log("LENGTH: " + length);
+
+
+                                if (length == -1) {
+                                        callback(null, {"wait":-1});
+                                } else {
+                                        getNumMachines(queue_id, next, (err, num_result) => {
+
+                                                var num = num_result.num_machines;
+                                                console.log("NUM: " + num);
+
+                                                if (num == -1) {
+                                                        callback(null, {"wait":-1});
+                                                } else {
+                                                        var wait = (dur * length) / num;
+                                                        console.log("WAIT: " + wait);
+                                                        callback(null, {"wait":wait});
+                                                }
+                                        })
+                                }
+                        })
+                }
+        })	
+
+}
+
+
+app.get('/TEST', (request, response, next) => {
+
+	var queue_id = parseInt(request.query.queue_id);
+	var user_id = parseInt(request.query.user_id);
+	
+	getEstimatedWaitTime(user_id, queue_id, next, (err, dur_result) => {
+		response.send(dur_result);	
+        })
+ 
+})
+
+
 ///////////////////////////////////////////////// GET REQUESTS
 
 app.use(express.static(__dirname + '/public'));
@@ -184,6 +375,15 @@ app.get('/machine/details', (request, response, next) => {
 	
 	//var query = 	
 
+})
+
+
+// Get details of a particular venue, including available game queues and expected waiting times.
+app.get('/venue/queue', (request, response, next) => {
+	
+	var venue_id = parseInt(request.query.machine_id);
+
+	//var query = 
 })
 
 
@@ -357,6 +557,29 @@ app.get("/user/queue", (request, response, next) => {
 	})
 })
 
+app.get("/venue/queues", (request, response, next) => {
+
+	var venue_id = parseInt(request.query.venue_id);
+
+	var query = (SAN
+		`SELECT DISTINCT Q.queue_id, Q.category, Q.num_machines, (SELECT DISTINCT base_price FROM MACHINE WHERE category=Q.category AND venue_id=Q.venue_id) AS base_price, (SELECT COUNT(GA.machine_id) FROM GAME GA INNER JOIN MACHINE MA ON GA.machine_id = MA.machine_id WHERE MA.venue_id = Q.venue_id AND MA.category = Q.category) AS queue_size from QUEUE Q WHERE Q.venue_id = ${venue_id};`
+	);
+
+	connection.query(query, (err,result,fields) => {
+
+		if(err) {
+			next(err);
+		}
+		else {
+			response.json({Queues:result});
+		}
+
+	})
+
+
+
+})
+
 ///////////////////////////////////////////////// POST REQUESTS
 
 // Allow a user to login/be authenticated.
@@ -461,19 +684,18 @@ app.post('/user/logout', (request, response, next) => {
 							if (result.affectedRows >= 1) {
 								console.log("POST /queue/leave: User: " + user_id + " left queue");
 								response.status(204);
+								response.json({"User":[{logged_out:1}]});
 								//response.json({"Success": "User left queue."});
 							}
 							else {
-								console.log("POST /queue/leave: User attempted to leave queue they were not in.");
-														response.status(400);
-														response.json({"Error": "User: " + user_id + " was not in queue."});
+								console.log("POST /queue/leave: No queues left");
+								response.status(204);
+								response.json({"User":[{logged_out:1}]});
+								//response.json({"Error": "User: " + user_id + " was not in queue."});
 							}	
 						}
 		
 					})
-
-					response.json({"User":[{logged_out:1}]});
-		
 				}
 			})
 		}
@@ -521,10 +743,15 @@ app.post('/user/history', (request, response, next) => {
 	var user_id = parseInt(request.body.user_id);
 	var session_cookie = request.body.session_cookie;
 
-	var hist_query = SAN(`SELECT G.time_start, M.category, M.base_price, V.venue_name, V.google_token, V.latitude, V.longitude FROM ((GAME G INNER JOIN MACHINE M ON G.machine_id = M.machine_id) INNER JOIN VENUE V ON V.venue_id = M.venue_id) WHERE user_id = ${user_id} AND state = 5;`);
-	var hist_query_2 = "SELECT G.time_start, M.category, M.base_price, V.venue_name, V.google_token, V.latitude, V.longitude FROM (GAME G INNER JOIN MACHINE M ON G.machine_id = M.machine_id) INNER JOIN VENUE V ON V.venue_id = M.venue_id WHERE user_id = ? AND state = 5 ORDER BY G.time_start ASC;";
-	hist_query_2 = SQL.format(hist_query_2, user_id);
-	console.log(hist_query_2);
+	//var hist_query = SAN(`SELECT G.time_start, M.category, M.base_price, V.venue_name, V.google_token, V.latitude, V.longitude FROM ((GAME G INNER JOIN MACHINE M ON G.machine_id = M.machine_id) INNER JOIN VENUE V ON V.venue_id = M.venue_id) WHERE user_id = ${user_id} AND state = 5;`);
+	var hist_query_2 = (SAN 
+		`SELECT G.time_start, M.category, M.base_price, V.venue_id, V.venue_name, V.google_token, V.latitude, V.longitude 
+			FROM 
+				(GAME G INNER JOIN MACHINE M ON G.machine_id = M.machine_id) 
+				INNER JOIN 
+				VENUE V ON V.venue_id = M.venue_id 
+					WHERE user_id=${user_id} AND state = 5 ORDER BY G.time_start ASC;`
+	);
 
 	authentication(user_id, session_cookie, next, (err, auth_result) => {
 
@@ -611,6 +838,18 @@ app.post('/queue/join', (request, response, next) => {
 	authentication(user_id, session_cookie, next, (auth_err, auth_result) => {
 
 		if(auth_result.auth == 1) {
+
+
+			// Send a beep beep to the Raspberry Pi
+			var request=require('request');
+
+			request('https://adjuvant-persian-5410.dataplicity.io', function(err,res,body) {
+  				if(err) {
+
+				} 
+				console.log("BEEP DA BOOP");
+			});
+
 
 			// Make sure user isn't already in a queue.
 			var query_inQueue = (SAN
@@ -749,6 +988,8 @@ app.post('/queue/add', (request, response, next) => {
 
 	var user_id = parseInt(request.body.user_id);
 	var machine_id = parseInt(request.body.machine_id);
+
+	console.log("MACHINE ID: " + machine_id);
 	
 	var matchmaking = 0// Use this later
 	var num_players = 2// Use this later
@@ -806,7 +1047,7 @@ app.post('/machine/add', (request, response, next) => {
 
 	var venue_id = parseInt(request.body.venue_id);
 	var category = request.body.category;
-	var base_price = parseInt(request.body.base_price);
+	var base_price = parseFloat(request.body.base_price).toFixed(2);
 
 	var user_id = parseInt(request.body.user_id);
 	var session_cookie = request.body.session_cookie;
@@ -848,6 +1089,7 @@ app.post('/machine/add', (request, response, next) => {
 						
 						var queue_id = result[0].queue_id;
 						var num_machines = (result[0].num_machines + 1);
+                                                console.log("TEST: " + result[0].num_machines + " before, now " + num_machines + ".");
 
 						var query_update = (SAN
 								`UPDATE QUEUE
@@ -929,20 +1171,120 @@ app.post('/machine/remove', (request, response, next) => {
 */
 
 
-///////////////////////////////////////////////// PUT REQUESTS
+///////////////////////////////////////////////// MISC REQUESTS
 
-// Update statistics of an existing machine
-app.put('/machine/edit', (request, response, next) => {
+// Remove a machine
+app.post('/machine/delete', (request, response, next) => {
 
 	var machine_id = parseInt(request.body.machine_id);
 	var venue_id = parseInt(request.body.venue_id);
-	var base_price = parseFloat(request.body.base_price);
-	var to_delete = parseInt(request.body.to_delete);
-	var category = request.body.category;
 
-	if(!to_delete) {
-		to_delete = 0;
-	}
+	var user_id = parseInt(request.body.user_id);
+	var session_cookie = request.body.session_cookie;
+	var category;
+
+	console.log("test");
+
+	authentication_admin(user_id, session_cookie, venue_id, next, (err, auth_result) => {
+
+		if(auth_result.auth == 1) {
+
+			var delete_query = (SAN
+				`SELECT category FROM MACHINE where machine_id=${machine_id}; DELETE FROM MACHINE where machine_id=${machine_id};`);
+
+			connection.query(delete_query, (err, delete_result) => {
+				
+				if(delete_result.affectedRows == 0) {
+					var error = new Error('Machine does not exist!');
+					  error.name = 'NoneExistantMachine';
+					next(error);
+				}
+				else if(err) {
+					next(err);
+				}
+				else {
+					category = delete_result[0][0].category;
+
+								// Check whether queue exists yet for that category at that venue.
+					var queue_query = (SAN
+						`SELECT queue_id, num_machines FROM QUEUE
+						WHERE venue_id=${venue_id}
+						AND category=${category};`
+					);
+
+					// Run queue query
+					connection.query(queue_query, (err, queue_result) => {
+
+
+						if(err) {
+							next(err)
+						}
+						else {
+
+							var update_query;
+							var queue_id = queue_result[0].queue_id;
+							if((queue_result[0].num_machines) <= 1) {
+								// DELETE
+								update_query = (SAN `DELETE FROM QUEUE where queue_id = ${queue_id};`);
+								console.log("DELETED QUEUE");
+
+							}
+							else {
+								// UPDATE
+								var new_value = (parseInt(queue_result[0].num_machines)) - 1;
+								update_query = (SAN `UPDATE QUEUE set num_machines = ${new_value} WHERE queue_id=${queue_id};`);
+								console.log(update_query);
+								console.log("UPDATED QUEUE");
+							}
+
+							connection.query(update_query, (err, update_result) => {
+
+								if(err) {
+									next(err);
+								}
+								else {
+									// Send 200 status back
+									response.sendStatus(200);
+									console.log("DELETE /machine/remove: Remove machine");
+								}
+
+							})
+
+						
+						}
+ 
+					})
+				
+
+
+
+				}
+			});
+
+
+
+
+		}
+		
+		else {
+			console.log("POST /queue/edit: Authentication Failed");
+			response.status(401);
+			response.json({"Authentication":[{auth:0}]});
+		}
+
+
+	})
+
+
+})
+
+
+// Update statistics of an existing machine
+app.put('/machine/edit/price', (request, response, next) => {
+
+	var venue_id = parseInt(request.body.venue_id);
+	var category = request.body.category;
+	var new_price = parseFloat(request.body.new_price);
 
 	var user_id = parseInt(request.body.user_id);
 	var session_cookie = request.body.session_cookie;
@@ -951,49 +1293,16 @@ app.put('/machine/edit', (request, response, next) => {
 
 		if(auth_result.auth == 1) {
 
-			// Base sql
-			var sql = "UPDATE MACHINE SET"
+			var price_query = (SAN `UPDATE MACHINE SET base_price = ${new_price}, current_price = ${new_price} WHERE category = ${category} AND venue_id = ${venue_id};`);
 
-			// Base price
-			if(base_price != 0) {
-				sql += " base_price = " + connection.escape(base_price) + ", current_price = " + connection.escape(base_price)
-				//sql = SQL.format(sql, base_price)
-			}
-			
-			// Category
-			if(category != null || category !='') {
-
-				// Add comma
-				if(base_price != 0) {
-					sql += ","
-				}
-
-				sql += " category = " + connection.escape(category)
-			}
-
-			/*
-			// IF DELETING MACHINE
-			if(to_delete != 0) {
-				sql = "DELETE FROM MACHINE" 
-			}
-			*/
-
-			sql += " WHERE machine_id = ?;";
-			
-			//var inserts = [total, total, base_price, base_price, machine_id]
-			sql = SQL.format(sql, machine_id);
-			
-			console.log(sql);
-
-
-			connection.query(sql, (err, result) => {
+			connection.query(price_query, (err, result) => {
 				if(err) {
 					next(err);
 				}
 				else {
 					// Send 200 status back
 					response.sendStatus(200);
-					console.log("PUT /machine/edit: Update machine");
+					console.log("PUT /machine/edit/price: Update prices of /" + category + "/ in venue: " + venue_id);
 				}
 			});
 
@@ -1072,6 +1381,35 @@ app.get('/notification/test', (request, response, next) => {
 	response.send(200);
 
 })
+
+// FOR VIDEO
+app.get('/notification/forVideo', (request, response, next) => {
+	
+	var d_id = 'dHmNPFB7Kcc:APA91bEwgbr4phudFV3jwIUjj9_n7AKOPxVb8wkgrRsLalx0L8qN3c6zqnkM2HCPz0AszzwSduTh5mRLJDkCXTPfT2gF9vvGsBXr2cWwhm-65Vw-m2jTtplPJJlUTHuYw1-a0AufcG3t';
+
+        var message= {
+                token: d_id,
+                data: {
+                        title: 'Cue.',
+                        body: 'Your game is ready!',
+                        type: 'ready'
+                }
+        };
+
+
+        //callback style
+        fcm.send(message, function(err, response){
+                if (err) {
+                	console.log("Something has gone wrong!");
+                } else {
+                        console.log("Successfully sent with response: ", response);
+                }
+        });
+
+
+	response.sendStatus(200);
+})
+				
 
 // Confirm game end.
 app.put('/queue/gameEnd', (request, response, next) => {
@@ -1183,3 +1521,4 @@ app.use(function(error, request, response, next) {
 
 // Listen on HTTPS port
 https.createServer(options, app).listen(443);
+
