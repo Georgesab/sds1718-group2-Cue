@@ -277,15 +277,48 @@ function getUserQueueStatus(user_id, queue_id, next, callback) {
 
 }
 
+function getUserQueue(user_id, next, callback) {
+	
+	var query = (SAN
+		`SELECT QUEUE.queue_id, VENUE.venue_name, VENUE.venue_id, QUEUE.category FROM
+    			QUEUE LEFT JOIN VENUE
+        			ON VENUE.venue_id=QUEUE.venue_id
+    			WHERE queue_id IN
+        			(SELECT wait_id FROM GAME
+        			    WHERE user_id=${user_id}
+    					AND state<3
+        			);`
+	);
+
+	connection.query(query, (err, result, fields) => {
+		if (err) {
+			next(err);
+		} else {
+			if (result.length == 0) {
+				callback(null, {"Queue":"None"});
+			} else {
+				callback(null, {"Queue":result[0]});
+			}
+		}
+	})
+}
+
 
 app.get('/TEST', (request, response, next) => {
 
-	var queue_id = parseInt(request.query.queue_id);
 	var user_id = parseInt(request.query.user_id);
 	
-	getUserQueueStatus(user_id, queue_id, next, (err, dur_result) => {
-		response.send(dur_result);	
-        })
+	getUserQueue(user_id, next, (err, result) => {
+		
+		response.send(result);
+
+		if (result.Queue==="None") {
+			console.log("Yup, no queue!");
+		} else {
+			console.log(result.Queue);
+		}
+
+	})
  
 })
 
@@ -509,35 +542,25 @@ app.get("/user/queue", (request, response, next) => {
 
 	var user_id = parseInt(request.query.user_id);
 
-	var query_qid = (SAN
-		`SELECT QUEUE.queue_id, VENUE.venue_name, VENUE.venue_id, QUEUE.category FROM
-			QUEUE LEFT JOIN VENUE
-				ON VENUE.venue_id=QUEUE.venue_id
-			WHERE queue_id IN
-				(SELECT wait_id FROM GAME
-					WHERE user_id=${user_id}
-					AND state!=4
-				);`
-		);
+	getUserQueue(user_id, next, (err_queue, result_queue) => {
 
-	connection.query(query_qid, (err_qid, result_qid) => {
-
-		if (err_qid) {
-			next(err_qid);
+                if (err_queue) {
+			next(err_queue);
 		}
 		else {
-			if (result_qid.length > 0) {
-				var queue_id = result_qid[0].queue_id;
+	                if (result_queue.Queue==="None") {
+
+				response.json({"Queue":"None"});
+			} else {
+	
+				var queue_id = result_queue.Queue.queue_id;
 
 				getUserQueueStatus(user_id, queue_id, next, (err, result_details) => {
-					console.log(result_details);
-					response.json({"Queue":result_qid[0], "Stats":result_details});
+
+					response.json({"Queue":result_queue.Queue, "Stats":result_details});
 					console.log("GET /user/queue: Sent queue data for user " + user_id);
 					
 				})
-			}
-			else {
-				response.json({Queue:[]});
 			}
 		}
 	})
