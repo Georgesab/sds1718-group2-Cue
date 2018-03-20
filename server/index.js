@@ -772,6 +772,42 @@ app.post('/user/add', (request, response, next) => {
 })
 
 
+app.post('/venue/history', (request, response, next) => {
+
+	var user_id = parseInt(request.body.user_id);
+	var session_cookie = request.body.session_cookie;
+	var venue_id = parseInt(request.body.venue_id);
+
+	authentication_admin(user_id, session_cookie, venue_id, next, (err, auth_result) => {
+		
+		if (auth_result.auth == 1) {
+
+			var query = (SAN
+				`SELECT G.user_id, U.name, U.username, G.machine_id, M.category, G.price, G.game_id, G.time_add, G.time_start, G.time_end
+					FROM GAME G INNER JOIN MACHINE M 
+						ON G.machine_id=M.machine_id INNER JOIN USER U 
+							ON G.user_id=U.user_id 
+						WHERE M.venue_id=${venue_id};`
+			);
+
+			connection.query(query, (err, result) => {
+
+				if (err) {
+					next(err);
+				} else {
+					response.json({"History":result});
+					console.log("POST /venue/history: Sent history for venue #"+ venue_id + ".");
+				}
+			})
+
+		} else {
+			response.status(401);
+			response.json({"Authentication":[{auth:0}]});
+		}
+	})
+})
+
+
 app.post('/user/history', (request, response, next) => { 
 
 	var user_id = parseInt(request.body.user_id);

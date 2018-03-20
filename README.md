@@ -348,6 +348,7 @@ Allow a user to leave whatever queue they are currently in.
 | user_id        | int    | ID of user to leave queue  |
 | session_cookie | string | Session cookie of the user |
 
+
 ### POST /machine/add
 
 Add a new machine to a specific venue.
@@ -412,6 +413,51 @@ JSON object containing array **History** with object that has following fields:
         }
     ]
 }
+
+### POST /venue/history
+
+View all games played at a specific venue.
+
+##### Request Body
+
+| Key               | Format  | Description                      |
+| ----------------- | ------- | -------------------------------- |
+| user_id           | int     | ID of the user                   |
+| session_cookie    | string  | Session cookie of user           |
+| venue_id	    | int     | ID of the venue                  |
+
+#### Return Value
+If the user is an admin of the venue, a JSON array will be returned, such as the following:
+```
+{
+    "History": [
+        {
+            "user_id": 72,
+            "name": "Test Player",
+            "username": "Player2",
+            "machine_id": 76,
+            "category": "Skittles",
+            "price": 0.6,
+            "game_id": 124,
+            "time_add": "2018-03-19T18:57:24.000Z",
+            "time_start": "2018-03-19T18:57:24.000Z",
+            "time_end": "2018-03-19T19:12:25.000Z"
+        },
+        {
+            "user_id": 72,
+            "name": "Test Player",
+            "username": "Player2",
+            "machine_id": 76,
+            "category": "Skittles",
+            "price": 0.7,
+            "game_id": 125,
+            "time_add": "2018-03-19T18:58:01.000Z",
+            "time_start": "2018-03-19T19:14:01.000Z",
+            "time_end": "2018-03-19T19:28:03.000Z"
+        }
+    ]
+}
+```
 
 ## PUT Requests
 
