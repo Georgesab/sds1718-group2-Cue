@@ -120,6 +120,34 @@ JSON object containing an array of *Queue*s the user is in, for example:
 * Array will be empty if the specified user is not in a queue.
 * `avg_game_duration` will be `NULL` if there is no previous game data from which to calculate an average. 
 
+### Get /venue/queues
+
+Return an array of queues available at a particular venue.
+
+##### Query Parameters
+
+| Key      | Format | Description         |
+| -------- | ------ | ------------------- |
+| venue_id | int    | ID of venue         |
+
+##### Return Value
+
+JSON object containing an array of *Queue*s the venue has. for example:
+```
+{
+    "Queues": [
+        {
+            "queue_id": 30,
+            "category": "Skittles",
+            "num_machines": 1,
+            "current_price": 0.6,
+            "wait_time": 29,
+            "queue_size": 2
+        }
+    ]
+}
+```
+
 ## POST Requests
 
 ### POST /user/login

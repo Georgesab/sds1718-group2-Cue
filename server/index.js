@@ -1,10 +1,10 @@
 var https = require('https');
 var fs = require('fs');
 var forceSsl = require('express-force-ssl');
-
+var async = require('async');
 var bcrypt = require('bcrypt');
-const saltRounds = 10;
 
+const saltRounds = 10;
 const express = require('express');
 const bodyParser = require('body-parser');
 const basicAuth = require('basic-auth');
@@ -171,12 +171,11 @@ function getNumMachines(queue_id, next, callback) {
 }
 
 // Calculate expected waiting time for a given queue.
-function getExpectedWaitTime(queue_id, next, callback) {
+function getQueueStatus(queue_id, next, callback) {
 	
 	getAvgGameDuration(queue_id, next, (err, dur_result) => {
 		
 		var dur = dur_result.dur;
-		console.log("DUR: " + dur);
 
 		if (dur == -1) {
 			callback(null, {"wait":-1});
@@ -184,22 +183,19 @@ function getExpectedWaitTime(queue_id, next, callback) {
 			getQueueLength(queue_id, next, (err, length_result) => {
 				
 				var length = length_result.length;
-		                console.log("LENGTH: " + length);
 					
 				if (length == -1) {
 					callback(null, {"wait":-1});
 				} else {
 					getNumMachines(queue_id, next, (err, num_result) => {
 						
-						var num = num_result.num_machines;	
-						console.log("NUM: " + num);
+						var num = num_result.num_machines;
 
 						if (num == -1) {
 							callback(null, {"wait":-1});
 						} else {
 							var wait = Math.round((dur * length) / num);
-							console.log("WAIT: " + wait);
-							callback(null, {"wait":wait});
+							callback(null, {"wait":wait, "queue_size":length});
 						}
 					})
 				}					
@@ -243,7 +239,6 @@ function getUserQueueStatus(user_id, queue_id, next, callback) {
 	getAvgGameDuration(queue_id, next, (err, dur_result) => {
 
                 var dur = dur_result.dur;
-                console.log("DUR: " + dur);
 
                 if (dur == -1) {
                         callback(null, {"wait":-1});
@@ -251,8 +246,6 @@ function getUserQueueStatus(user_id, queue_id, next, callback) {
                         getQueuePosition(user_id, queue_id, next, (err, length_result) => {
 
                                 var length = length_result.position;
-                                console.log("LENGTH: " + length);
-
 
                                 if (length == -1) {
                                         callback(null, {"wait":-1});
@@ -260,13 +253,11 @@ function getUserQueueStatus(user_id, queue_id, next, callback) {
                                         getNumMachines(queue_id, next, (err, num_result) => {
 
                                                 var num = num_result.num_machines;
-                                                console.log("NUM: " + num);
 
                                                 if (num == -1) {
                                                         callback(null, {"wait":-1});
                                                 } else {
                                                         var wait = Math.round((dur * length) / num);
-                                                        console.log("WAIT: " + wait);
                                                         callback(null, {"wait":wait, "position":length});
                                                 }
                                         })
@@ -303,20 +294,44 @@ function getUserQueue(user_id, next, callback) {
 	})
 }
 
+function getQueueDetails(queue_id, next, callback) {
+
+	var query = (SAN
+		`SELECT DISTINCT(queue_id) queue_id, QUEUE.category, num_machines, current_price 
+			FROM QUEUE LEFT JOIN MACHINE
+				ON(QUEUE.category=MACHINE.category AND QUEUE.venue_id=MACHINE.venue_id)
+			WHERE queue_id=${queue_id};`
+	);
+
+	connection.query(query, (err_det, result_det, fields) => {
+	
+		if (err_det) {
+			next(err_det);
+		} else {
+			getQueueStatus(queue_id, next, (err_stat, result_stat) => {
+				callback(null, {"queue_id":result_det[0].queue_id, 
+						"category":result_det[0].category, 
+						"num_machines":result_det[0].num_machines,
+						"current_price":result_det[0].current_price,
+						"wait_time":result_stat.wait,
+						"queue_size":result_stat.queue_size});
+			})
+		}
+	})
+ 
+}
+
+
+
+
 
 app.get('/TEST', (request, response, next) => {
 
-	var user_id = parseInt(request.query.user_id);
+	var queue_id = parseInt(request.query.queue_id);
 	
-	getUserQueue(user_id, next, (err, result) => {
+	getQueueDetails(queue_id, next, (err, result) => {
 		
 		response.send(result);
-
-		if (result.Queue==="None") {
-			console.log("Yup, no queue!");
-		} else {
-			console.log(result.Queue);
-		}
 
 	})
  
@@ -566,28 +581,38 @@ app.get("/user/queue", (request, response, next) => {
 	})
 })
 
-app.get("/venue/queues", (request, response, next) => {
 
+app.get("/venue/queues", (request, response, next) => {
+	
 	var venue_id = parseInt(request.query.venue_id);
 
-	var query = (SAN
-		`SELECT DISTINCT Q.queue_id, Q.category, Q.num_machines, (SELECT DISTINCT base_price FROM MACHINE WHERE category=Q.category AND venue_id=Q.venue_id) AS base_price, (SELECT COUNT(GA.machine_id) FROM GAME GA INNER JOIN MACHINE MA ON GA.machine_id = MA.machine_id WHERE MA.venue_id = Q.venue_id AND MA.category = Q.category) AS queue_size from QUEUE Q WHERE Q.venue_id = ${venue_id};`
-	);
+	var query_num = (SAN `SELECT queue_id FROM QUEUE WHERE venue_id=${venue_id};`);
+				
+	connection.query(query_num, (err_num, result_num) => {
 
-	connection.query(query, (err,result,fields) => {
+		if (err_num) {
+			next(err_num);
+		} else {
+			var queues = [];
+				async.forEachOf(result_num, function (dataElement, i, inner_callback) {
+					
+				getQueueDetails(dataElement['queue_id'], next, (err, result_det) => {
+					queues[i] = result_det;
+					inner_callback();
+				});
+			}, function(err_loop) {
 
-		if(err) {
-			next(err);
+				if(err_loop) {
+					next(err_loop);
+				} else {
+					response.json({"Queues":queues});
+					console.log("GET /venue/queues: Sent queue data for venue " + venue_id);
+				}
+			});
 		}
-		else {
-			response.json({Queues:result});
-		}
-
 	})
-
-
-
 })
+
 
 ///////////////////////////////////////////////// POST REQUESTS
 
