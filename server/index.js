@@ -873,18 +873,6 @@ app.post('/queue/join', (request, response, next) => {
 
 		if(auth_result.auth == 1) {
 
-
-			// Send a beep beep to the Raspberry Pi
-			var request=require('request');
-
-			request('https://adjuvant-persian-5410.dataplicity.io', function(err,res,body) {
-  				if(err) {
-
-				} 
-				console.log("BEEP DA BOOP");
-			});
-
-
 			// Make sure user isn't already in a queue.
 			var query_inQueue = (SAN
 				`SELECT VENUE.venue_name, QUEUE.category FROM
@@ -909,7 +897,7 @@ app.post('/queue/join', (request, response, next) => {
 					}
 					else {
 						// Find correct queue.
-							
+							/*
 						var query_find = (SAN
 							`SELECT queue_id, QUEUE.venue_id, venue_name, QUEUE.category, (SELECT SEC_TO_TIME(AVG(TIME_TO_SEC(wait))) FROM (SELECT TIMEDIFF(time_start, time_add) AS wait FROM GAME G INNER JOIN MACHINE M on G.machine_id = M.machine_id WHERE venue_id = 1 AND state = 5) AS wait_table) AS average_wait 
 							FROM 
@@ -918,9 +906,9 @@ app.post('/queue/join', (request, response, next) => {
 							WHERE (QUEUE.category, QUEUE.venue_id) IN 
 								(SELECT category, venue_id FROM MACHINE 
 									WHERE machine_id=${machine_id});`
-							);
+							);*/
 
-								/*
+								
 						var query_find = (SAN
 							`SELECT queue_id, QUEUE.venue_id, venue_name, QUEUE.category FROM 
 								QUEUE LEFT JOIN VENUE
@@ -930,7 +918,6 @@ app.post('/queue/join', (request, response, next) => {
 										WHERE machine_id=${machine_id}
 									);`
 							);
-						*/
 
 						connection.query(query_find, (find_err, find_result) => {
 	                                		if (find_err) {
@@ -950,8 +937,28 @@ app.post('/queue/join', (request, response, next) => {
 										next(newGame_err);
 									}
 									else {
-										response.json({Queue:find_result});
-										console.log("POST /queue/join: User " + user_id + " joined queue " + queue_id + ".");
+										// Send a beep beep to the Raspberry Pi
+                        							var request=require('request');
+				
+                							        request('https://adjuvant-persian-5410.dataplicity.io', function(err,res,body) {
+                        								if(err) {
+
+                   									}
+                                							console.log("BEEP DA BOOP");
+                        							});
+
+										getUserQueueStatus(user_id, queue_id, next, (err_status, result_status) => {
+											response.json({"Queue":{
+														"queue_id":find_result[0].queue_id,
+														"category":find_result[0].category,
+														"venue_id":find_result[0].venue_id,
+														"venue_name":find_result[0].venue_name,
+														"queue_pos":result_status.position,
+														"wait_time":result_status.wait
+													}});
+                                                                                	console.log("POST /queue/join: User " + user_id + " joined queue " + queue_id + ".");
+
+										});	
 									}
 								})
 							}

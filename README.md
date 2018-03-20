@@ -308,13 +308,19 @@ Allow a user to join a queue with immediate effect. Venue and game category are 
 
 ##### Return Value(s)
 **Valid user_id and session_cookie combination:**
-JSON object containing array **Queue** with object that has following fields:
-- queue_id \ int
-- venue_id \ int
-- venue_name \ string
-- category \ string
-
-
+JSON object containing array **Queue**, for example:
+```
+{
+    "Queue": {
+        "queue_id": 30,
+        "category": "Skittles",
+        "venue_id": 13,
+        "venue_name": "Cherry Red's (New Street)",
+        "queue_pos": 3,
+        "wait_time": 44
+    }
+}
+```
 
 **User already in queue:**
 JSON object containing error string.
