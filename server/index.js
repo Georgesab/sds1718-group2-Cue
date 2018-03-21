@@ -100,16 +100,6 @@ function authentication_admin(user_id, session_cookie, venue_id, next, callback)
 	})
 }
 
-// Used to pull queue details (num in queue, place in queue, expected wait time).
-function getQueueDetails(queue_id, num_inQueue, user_id, next, callback) {
-	
-	// Check if any machines are available.
-
-	// If not:
-
-	// If so: 
-}
-
 // Calculate average game duration.
 function getAvgGameDuration(queue_id, next, callback) {
 
@@ -170,6 +160,33 @@ function getNumMachines(queue_id, next, callback) {
 	})
 }
 
+
+// Check if a machine in a queue is available right now.
+function getAvailableMachines(queue_id, next, callback) {
+	
+	var query = (SAN
+		`SELECT machine_id FROM
+			QUEUE Q LEFT JOIN MACHINE M
+				ON Q.venue_id=M.venue_id AND Q.category=M.category
+			WHERE queue_id=${queue_id}
+			AND available=1;`
+	);
+
+	connection.query(query, (err, result, fields) => {
+		
+		if (err) {
+			next(err);
+		}
+		else {
+			if (result.length == 0) {
+				callback(null, {"available":"None"});
+			} else {
+				callback(null, {"available":result});
+			}
+		}
+	});
+}
+
 // Calculate expected waiting time for a given queue.
 function getQueueStatus(queue_id, next, callback) {
 	
@@ -228,7 +245,19 @@ function getQueuePosition(user_id, queue_id, next, callback) {
 			callback(null, {"position":-1});
 		} else {
 			var position = result[0].num_in_front + 1;
-                        callback(null, {"position":position});
+	
+			if (position == 1) {
+				getAvailableMachines(queue_id, next, (err_machines, result_machines) => {
+					if (result.available==="none") {
+						callback(null, {"position":position});
+					} else {
+						var machine_id = result_machines.available[0].machine_id;
+						callback(null, {"position":0, "machine_id":machine_id});
+					}
+				})
+			} else {
+                        	callback(null, {"position":position});
+			}
 		}
 	})
 }
@@ -249,6 +278,8 @@ function getUserQueueStatus(user_id, queue_id, next, callback) {
 
                                 if (length == -1) {
                                         callback(null, {"wait":-1});
+				} else if (length == 0) {
+					callback(null, {"wait":0, "position":0});
                                 } else {
                                         getNumMachines(queue_id, next, (err, num_result) => {
 
@@ -321,18 +352,101 @@ function getQueueDetails(queue_id, next, callback) {
  
 }
 
+function prepareGame(game_id, machine_id, user_id, next, callback) {
+	
+	var query_game = (SAN
+		`UPDATE GAME
+			SET machine_id=${machine_id} AND state=2
+			WHERE game_id=${game_id};`
+	);
 
+
+	var query_machine = (SAN
+		`UPDATE MACHINE
+			SET available=0
+			WHERE machine_id=${machine_id};`
+	);
+
+	var query_user = (SAN
+		`SELECT device_id FROM USER
+			WHERE user_id=${user_id};`
+	);
+
+	var query_num = (SAN
+		`SELECT num_machines FROM QUEUE
+			WHERE (QUEUE.category, QUEUE.venue_id) IN
+				(SELECT category, venue_id FROM MACHINE
+					WHERE machine_id=${machine_id});`
+	);
+
+	connection.query(query_game, (err_game, result_game) => {
+		
+		if (err_game) {
+			next(err_game);
+		} else {
+			
+			connection.query(query_machine, (err_machine, result_machine) => {
+				
+				if (err_machine) {
+					next(err_machine);
+				} else {
+					
+					connection.query(query_user, (err_user, result_user) => {
+						
+						if (err_user) {
+							next(err_user);
+						} else {
+
+							connection.query(query_num, (err_num, result_num) => {
+								
+								if (err_num) {
+									next(err_num);
+								} else {
+
+									var device_id = result_user[0].device_id
+
+									var ready_message = {
+                								to: device_id,
+                        							data: {
+                                							title: 'Cue.',
+                                							body: 'Your game is ready!',
+                                							type: 'ready',
+											machines: result_num[0].num_machines
+                								}
+        								};
+
+									fcm.send(ready_message, function(err, response){
+               									if (err) {
+                        								console.log("Something has gone wrong!");
+                								} else {
+                								        console.log("Successfully sent with response: ", response);
+           								     }
+        								});
+
+								}
+							})
+						}
+
+					})
+				}
+			})
+		}	
+	})	
+}
 
 
 
 app.get('/TEST', (request, response, next) => {
-
-	var queue_id = parseInt(request.query.queue_id);
-	
-	getQueueDetails(queue_id, next, (err, result) => {
 		
-		response.send(result);
-
+	getQueuePosition(70, 29, next, (err, result) => {
+		
+		if (err) {
+			next(err);
+		} else {
+		
+			console.log("TESTING getQueuePosition");
+			response.send(result);
+		}
 	})
  
 })
@@ -1379,6 +1493,7 @@ app.put('/machine/edit/price', (request, response, next) => {
 				else {
 					// Send 200 status back
 					response.sendStatus(200);
+					response.json({"OK":"Machine price updated"});
 					console.log("PUT /machine/edit/price: Update prices of /" + category + "/ in venue: " + venue_id);
 				}
 			});
