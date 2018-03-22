@@ -1211,6 +1211,7 @@ function authenticateQueueJoin(user_id, session_cookie, next, callback) {
         	    	next(err_queue);
                	}
 				else if (result_queue.Queue==="None") {
+					console.log("Authenticated!");
 					callback(null, result_auth);
 				} else {
 					callback(null, {"auth":0});
@@ -1246,6 +1247,7 @@ function recceQueueJoin(machine_id, next, callback) {
 				if(err2) {
 					next(err2);
 				} else {
+					console.log("Recce complete!");
 					callback(null, {"queue_id":result1[0].queue_id,
 									"category":result1[0].category,
 									"venue_id":result1[0].venue_id,
@@ -1282,13 +1284,14 @@ function addToQueue(queue_id, current_price, user_id, num_players, match_req, ne
 		if (err){
 			next(err);
 		} else {
-
+			console.log("Inserted!");
 			// Find ID of new record.
 			connection.query(query_id, (err_id, result_id) => {
 				if (err_id) {
 					next(err_id);
 				} else {
-					callback(null, "game_id":result_id[0].game_id);
+					console.log("Retrieved!");
+					callback(null, {"game_id":result_id[0].game_id});
 				}
 			})
 		}
@@ -1376,7 +1379,7 @@ app.post('/queue/join2', (request, response, next) => {
             response.json({"Authentication":[{auth:0}]});
 		}
 	})
-}
+})
 
 
 
