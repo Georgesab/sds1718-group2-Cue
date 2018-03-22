@@ -162,7 +162,6 @@ function getNumMachines(queue_id, next, callback) {
 	})
 }
 
-
 // Check if a machine in a queue is available right now.
 function getAvailableMachines(queue_id, next, callback) {
 	
@@ -297,36 +296,41 @@ function getUserQueueStatus(user_id, queue_id, next, callback) {
 	
 	getAvgGameDuration(queue_id, next, (err, dur_result) => {
 
-                var dur = dur_result.dur;
+        var dur = dur_result.dur;
 
-                if (dur == -1) {
-                        callback(null, {"wait":-1});
-                } else {
-                        getQueuePosition(user_id, queue_id, next, (err, length_result) => {
+        if (dur == -1) {
+            callback(null, {"wait":-1});
+        } else {
+            getQueuePosition(user_id, queue_id, next, (err, position_result) => {
 
-                                var length = length_result.position;
+            	var position = position_result.position;
 
-                                if (length == -1) {
-                                        callback(null, {"wait":-1});
-				} else if (length == 0) {
-					callback(null, {"wait":0, "position":0});
-                                } else {
-                                        getNumMachines(queue_id, next, (err, num_result) => {
+            	if (position == -1) {
+        
+ 	               callback(null, {"wait":-1});
+				} 
+				else if (position == 0) {
+				
+					var machine_id = position_result.machine_id;
 
-                                                var num = num_result.num_machines;
+					callback(null, {"wait":0, "position":0, "machine_id":machine_id});
+    	        } else {
+                                        
+        	        getNumMachines(queue_id, next, (err, num_result) => {
 
-                                                if (num == -1) {
-                                                        callback(null, {"wait":-1});
-                                                } else {
-                                                        var wait = Math.round((dur * length) / num);
-                                                        callback(null, {"wait":wait, "position":length});
-                                                }
-                                        })
-                                }
-                        })
+        		        var num = num_result.num_machines;
+
+                		if (num == -1) {
+                    		callback(null, {"wait":-1});
+               			} else {
+                    		var wait = Math.round((dur * position) / num);
+                    		callback(null, {"wait":wait, "position":position});
+                		}
+           			})
                 }
-        })	
-
+            })
+        }
+    })	
 }
 
 
@@ -1193,6 +1197,191 @@ app.post('/game/start', (request, response, next) => {
 	})
 })
 
+/* JOIN QUEUE STUFF --------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------*/
+
+function authenticateQueueJoin(user_id, session_cookie, next, callback) {
+
+	authentication(user_id, session_cookie, next, (err_auth, result_auth) => {
+
+		if(result_auth.auth == 1) {
+
+			getUserQueue(user_id, next, (err_queue, result_queue) => {
+				if (err_queue) {
+        	    	next(err_queue);
+               	}
+				else if (result_queue.Queue==="None") {
+					callback(null, result_auth);
+				} else {
+					callback(null, {"auth":0});
+                       console.log("User " + user_id + " failed to join queue.");
+				}
+			})
+		} else {
+			callback(null, result_auth);
+		}
+	})
+} 
+
+function recceQueueJoin(machine_id, next, callback) {
+
+	var query1 = (SAN
+		`SELECT queue_id, Q.category, Q.venue_id, current_price, hub_addr FROM 
+			MACHINE M LEFT JOIN QUEUE Q
+				ON M.venue_id=Q.venue_id AND M.category=Q.category
+			WHERE machine_id=${machine_id};`
+	);
+
+	var query2 = (SAN	
+		`SELECT venue_name FROM VENUE
+			WHERE venue_id=${venue_id}`
+	);
+
+	connection.query(query1, (err1, result1) => {
+		
+		if (err1) {	
+			next(err1);
+		} else {
+			connection.query(query2, (err2, result2) => {
+				if(err2) {
+					next(err2);
+				} else {
+					callback(null, {"queue_id":result1[0].queue_id,
+									"category":result1[0].category,
+									"venue_id":result1[0].venue_id,
+									"current_price":result1[0].current_price,
+									"hub_addr":result1[0].hub_addr,
+									"venue_name":result2[0].venue_name
+									}
+					);
+				}
+			})
+		}
+	})
+
+}
+
+function addToQueue(queue_id, current_price, user_id, num_players, match_req, next, callback) {
+
+	var time_add = new Date();
+
+	var query = (SAN
+		`INSERT INTO
+        	GAME(user_id, state, time_add, wait_id, num_players, match_req, price)
+            VALUES(${user_id}, 1, ${time_add}, ${queue_id}, ${num_players}, ${match_req}, ${current_price});`
+	);
+
+	var query_id = (SAN
+		`SELECT game_id FROM GAME
+			WHERE user_id=${user_id}
+			AND time_add=${time_add};`
+	);
+
+	// Insert new record.
+	connection.query(query, (err, result) => {
+		if (err){
+			next(err);
+		} else {
+
+			// Find ID of new record.
+			connection.query(query_id, (err_id, result_id) => {
+				if (err_id) {
+					next(err_id);
+				} else {
+					callback(null, "game_id":result_id[0].game_id);
+				}
+			})
+		}
+	})
+}
+
+
+app.post('/queue/join2', (request, response, next) => {
+
+	var user_id = parseInt(request.body.user_id);
+	var machine_id = parseInt(request.body.user_id);
+	var session_cookie = request.body.session_cookie;
+
+	var match_required = 0;		// For later use.
+	var num_players = 2;		// For later use.
+
+	// Authenticate and check if user is already in queue.
+	authenticateQueueJoin(user_id, session_cookie, next, (err_auth, result_auth) => {
+
+		if (result_auth.auth == 1) {
+
+			// Find which queue user should join, as well as other essential details.
+			recceQueueJoin(machine_id, next, (err_recce, result_recce) => {
+
+				var current_price = result_recce.current_price;
+
+				// Create new game record.
+				addToQueue(queue_id, current_price, user_id, num_players, match_req, next, (err_add, result_add) => {
+
+					// Feedback to pi.
+					var request=require('request');
+					var addr = result_recce.hub_addr;
+    
+                    request(addr, function(err_fb, res_fb, body) {
+                    	if(err_fb) {
+                       		next(err_fb);
+                    	} else {
+							console.log("BEEP DA BOOP");
+						}
+
+						// Check if new game is ready immediately.
+						getUserQueueStatus(user_id, queue_id, next, (err_status, result_status) => {
+                    	    
+                    	    // If the game is ready immediately, set it up!
+							if (result_status.position==0) {
+
+								var machine_id = result_status.machine_id;
+								var game_id = result_add.game_id;
+
+								prepareGame(game_id, machine_id, user_id, next, (err_prep, result_prep) => {
+									response.json({
+										"Queue":{
+                            				"queue_id":result_recce.queue_id,
+                            				"category":result_recce.category,
+                            				"venue_id":result_recce.venue_id,
+                            				"venue_name":result_recce.venue_name,
+                           					"queue_pos":0,
+                            				"wait_time":0
+                            			}
+                            		});
+
+   	                            	console.log("POST /queue/join: User " + user_id + " joined empty queue " + queue_id + ".");
+								})
+							} else {
+								response.json({
+										"Queue":{
+                            				"queue_id":result_recce.queue_id,
+                            				"category":result_recce.category,
+                            				"venue_id":result_recce.venue_id,
+                            				"venue_name":result_recce.venue_name,
+                           					"queue_pos":result_status.position,
+                            				"wait_time":result_status.wait
+                            			}
+                           		 });
+
+                            	console.log("POST /queue/join: User " + user_id + " joined queue " + queue_id + ".");
+							}
+                    	})
+                    })
+				})
+			})
+		} else {
+			console.log("POST /queue/join: Authentication Failed");
+            response.status(401);
+            response.json({"Authentication":[{auth:0}]});
+		}
+	})
+}
+
+
+
+
+
 // Allows a user to join the queue. Replaces /queue/add in conjunction with queue/book.
 app.post('/queue/join', (request, response, next) => {
 
@@ -1292,6 +1481,9 @@ app.post('/queue/join', (request, response, next) => {
 		}
 	});
 })
+
+/* END: JOIN QUEUE STUFF --------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------*/ 
 
 // Allow a user to leave whichever queue they're in.
 app.post("/queue/leave", (request, response, next) => {
@@ -1738,35 +1930,6 @@ app.get('/notification/test', (request, response, next) => {
 	response.send(200);
 
 })
-
-// FOR VIDEO
-app.get('/notification/forVideo', (request, response, next) => {
-	
-	var d_id = 'dHmNPFB7Kcc:APA91bEwgbr4phudFV3jwIUjj9_n7AKOPxVb8wkgrRsLalx0L8qN3c6zqnkM2HCPz0AszzwSduTh5mRLJDkCXTPfT2gF9vvGsBXr2cWwhm-65Vw-m2jTtplPJJlUTHuYw1-a0AufcG3t';
-
-        var message= {
-                token: d_id,
-                data: {
-                        title: 'Cue.',
-                        body: 'Your game is ready!',
-                        type: 'ready'
-                }
-        };
-
-
-        //callback style
-        fcm.send(message, function(err, response){
-                if (err) {
-                	console.log("Something has gone wrong!");
-                } else {
-                        console.log("Successfully sent with response: ", response);
-                }
-        });
-
-
-	response.sendStatus(200);
-})
-				
 
 // Confirm game end.
 app.put('/queue/gameEnd', (request, response, next) => {
