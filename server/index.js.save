@@ -1,0 +1,717 @@
+
+var https = require('https');
+var fs = require('fs');
+var forceSsl = require('express-force-ssl');
+
+var bcrypt = require('bcrypt');
+const saltRounds = 10;
+
+const express = require('express');
+const bodyParser = require('body-parser');
+const basicAuth = require('basic-auth');
+const app = express();
+const unixTimestamp = require("unix-timestamp")
+const port = 80;
+const uuidv1 = require('uuid/v1');
+
+var options = {
+	key: fs.readFileSync('/etc/letsencrypt/live/idk-cue.club/privkey.pem'),
+	cert: fs.readFileSync('/etc/letsencrypt/live/idk-cue.club/cert.pem'),
+	ca: fs.readFileSync('/etc/letsencrypt/live/idk-cue.club/chain.pem')
+};
+
+// Database
+var SQL = require("mysql");
+var connection = SQL.createConnection({
+	host	: '127.0.0.1',
+	user	: 'blockchain',
+	password: 'rosecolouredboy',
+	multipleStatements: true,
+	database: 'SDS1'
+});
+
+var SAN = require("sql-template-strings");
+
+// Connect to the database
+connection.connect();
+
+// Misc
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+app.use(forceSsl);
+
+///////////////////////////////////////////////// HELPER/REUSABLE FUNCTIONS
+
+
+
+
+
+
+
+
+///////////////////////////////////////////////// GET REQUESTS
+
+// GET request -- webpage
+app.get('/', ( request, response, next) => {
+	response.sendFile('/index.html', {root: 'public'});
+	console.log("GET: Served /public/index.html");
+
+	//if(err) console.log(err);
+
+})
+
+// Get all games/specific game currently IN queue
+app.get('/queue', (request, response, next) => {
+
+	// If user_id = 0, return all for that venue
+	var venue_id = parseInt(request.query.venue_id);
+	var machine_id = parseInt(request.query.machine_id);
+	var user_id = parseInt(request.query.user_id);
+
+	var sql = "SELECT G.* FROM GAME G Inner Join MACHINE M on G.machine_id=M.machine_id WHERE venue_id = ? AND queue_pos > -1";
+	
+	// If user_id is 0, return all users, else just specifc user
+	if(user_id != 0) {
+		sql += " AND user_id = ?";
+	}
+
+	if(machine_id != 0) {
+		sql += " AND G.machine_id = ?"
+	}
+
+	sql += ";";
+	
+	var inserts = [venue_id, user_id, machine_id];
+	sql = SQL.format(sql, inserts);
+
+	connection.query(sql, (err, result, fields) => {
+		if(err) {
+			next(err);
+		}
+		else {
+			response.send(result);
+			console.log("GET /queue: sent GAME details for venue: " + venue_id + " | user_id: " + user_id + " | machine_id: " + machine_id);
+		}
+	})
+})
+
+// Get current price of a certain machine in a specific venue to show the user.
+app.get('/machine/price', (request, response, next) => {
+
+	var venue_id = parseInt(request.query.venue_id);
+	var category = request.query.category;
+
+	var sql = "SELECT base_price, current_price FROM MACHINE WHERE venue_id = ?, category = ?;"
+	var inserts = [venue_id, category];
+	sql = SQL.format(sql, inserts); 
+
+	connection.query(sql, (err, result, fields) => {
+		if(err) {
+			next(err);
+		}
+		else {
+			response.send(result);
+			console.log("GET /machine/price: got price of '" + category + "' machine in venue: " + venue_id);
+		}
+	})
+})
+
+
+// Get the list of machines in a specific venue.
+app.get('/machines/all', (request, response, next) => {
+
+	var venue_id = parseInt(request.query.venue_id);
+
+	var sql = "SELECT * FROM MACHINE WHERE venue_id = ?"
+	sql = SQL.format(sql, venue_id);
+
+	connection.query(sql, (err, result, fields) => {
+		if(err) {
+			next(err);
+		}
+		else {
+			//response.send(result);
+			response.json({"Machines": result})
+			console.log("GET /venue/machines: returned all the machines in venue: " + venue_id);
+		}
+	})
+})
+
+// Returns the current average wait time for a specfic type of machine in a specific venue.
+app.get('/venue/wait', (request, response, next) => {
+
+	var venue_id = parseInt(request.query.venue_id);
+	var category = request.query.category;
+
+	/*
+	var sql = ""
+	sql = SQL.format(sql, "");
+
+	connection.query(sql, (err, result, fields) => {
+
+		if(err) {
+			next(err);
+		}
+		else {
+			response.send(result);
+			console.log("GET /game/waitTime - WAIT TIME")
+		}
+
+	})
+	*/
+
+})
+
+
+// See if a user is responsible for a venue
+app.get('/user/admin', (request, response, next) => {
+
+	var user_id = parseInt(request.query.user_id);
+
+	var sql = "SELECT venue_id FROM ADMIN WHERE user_id = ?"
+	var inserts = [user_id];
+	sql = SQL.format(sql, inserts);
+
+	connection.query(sql, (err, result, fields) => {
+
+		if(err) {
+			next(err);
+			console.log(err);
+		}
+		else {
+			//response.send(result);
+
+			response.json({"Venues": result})
+			console.log("GET /user/admin: Sent admin status for user_id: " + user_id);
+
+			//response.json([{"user_id": result[1][0].user_id}]);
+
+		}
+
+
+	})
+
+})
+
+// Get details for a specific venue
+app.get('/venue', (request, response, next) => {
+
+	var venue_id = parseInt(request.query.venue_id);
+
+	var sql = "SELECT * FROM VENUE WHERE venue_id = ?"
+	var inserts = [venue_id];
+	sql = SQL.format(sql, inserts);
+
+	connection.query(sql, (err, result, fields) => {
+
+		if(err) {
+			next(err);
+		}
+		else {
+			response.json({"venue": result})
+		}
+	})
+
+})
+
+///////////////////////////////////////////////// POST REQUESTS
+
+app.post("/queue/leave", (request, response, next) => [
+	// TBA
+])
+
+// Allow a user to login/be authenticated.
+app.post("/user/login", (request, response, next) => {
+
+	var username = request.body.username;
+	var password = request.body.password;
+	var device_id = request.body.device_id;
+
+	var sql = "SELECT user_id, password_hash FROM USER WHERE username = ?";
+	var inserts = [username, username];
+	sql = SQL.format(sql, inserts); 
+
+
+	connection.query(sql, (err, result, fields) => {
+
+		if(err) {
+			next(err);
+		}
+		else {
+
+			if (result === undefined || result.length == 0) {
+				// IF ARRAY = EMPTY, NO USER RETURNED = RETURN 401 STATUS
+				response.sendStatus(401);
+				return;
+			}
+
+			var logged_in_user = parseInt(result[0].user_id);
+
+			bcrypt.compare(password, result[0].password_hash, (err, res) => {
+
+				// If user details correct
+				if(res) {
+					// response.sendStatus(200);
+
+					var session_cookie = uuidv1();
+					console.log(session_cookie);
+					var sql = "UPDATE USER SET device_id = ?, session_cookie = ? WHERE user_id = ?; SELECT * FROM ADMIN WHERE user_id = ?;"
+					var inserts = [device_id, session_cookie, logged_in_user, logged_in_user];
+					sql = SQL.format(sql, inserts); 
+				
+					connection.query(sql, (err, result) => {
+				
+						if(err) {
+							next(err);
+						}
+						else {
+							response.json({User:[{"user_id": logged_in_user,"session_cookie": session_cookie}], Admin:result[1]});
+							console.log("POST /user/login: Logged in + Updated device ID for user " + logged_in_user)
+						}
+			
+					})
+
+				}
+				// If user details incorrect
+				else {
+					response.sendStatus(401);
+				}
+			})
+		}
+
+	})
+})
+
+app.post('/user/logout', (request, response, next) => {
+
+	var user_id = parseInt(request.body.user_id);
+	// var session_cookie = request.body.session_id;
+
+	var sql = "UPDATE USER SET session_cookie = '' WHERE user_id = ?;"
+	
+	var inserts = [user_id];
+	sql = SQL.format(sql, inserts);
+
+	connection.query(sql, (err, result, fields) => {
+
+		if(err) {
+			next(err);
+			console.log(err);
+		}
+		else {
+			//response.send(result);
+
+			//response.sendStatus(200);
+			console.log("POST /user/logout: User: " + user_id + " logged out!")
+
+			response.json({"user": "logged out"});
+
+		}
+	})
+})
+
+// Add a new user to the service.
+app.post('/user/add', (request, response, next) => {
+
+	var username = request.body.username;
+	var password = request.body.password;
+	var name = request.body.name;
+	var device_id = request.body.device_id;
+	var session_cookie = uuidv1();
+	
+	// HASH PASSWORD
+	bcrypt.hash(password, saltRounds, function(err, hash) {
+		
+		var sql = "INSERT INTO `USER` (username, password_hash, name, device_id, session_cookie) VALUES (?,?,?,?, ?); SELECT last_insert_id() AS user_id;";
+		var inserts = [username, hash, name, device_id, session_cookie];
+		sql = SQL.format(sql, inserts);
+
+		connection.query(sql, (err, result) => {
+	
+			if(err) {
+				next(err);
+			}
+			else {
+
+				response.json({User:[{"user_id": result[1][0].user_id, "session_cookie": session_cookie}]});
+
+				console.log("POST /user/add: Added new user - " + username);
+			}
+
+		});
+	})
+})
+
+
+app.put('/queue/edit', (request, response, next) => {
+
+	// EDIT QUEUE TIME
+	// 
+	var user_id = parseInt(request.body.user_id);
+	var game_id = praseInt(request.body.game_id);
+	var time_requested = request.body.time_requested;
+
+
+
+})
+
+// Add a user to the queue — i.e. a user wants to play a game.
+app.post('/queue/add', (request, response, next) => {
+
+	var user_id = parseInt(request.body.user_id);
+	var machine_id = parseInt(request.body.machine_id);
+	
+	var matchmaking = 0// Use this later
+	var num_players = 2// Use this later
+
+	var time_add;
+	var time_requested = parseInt(request.body.time_requested);
+	var session_cookie = request.body.session_cookie;
+
+	time_add = new Date();
+	var time_requested_ds;
+	
+	
+	if(time_requested == 0) {
+		time_requested_ds = time_add;
+	}
+	else {
+		time_requested_ds = new Date(time_requested * 1000);
+	}
+
+	//var sql = "INSERT INTO `GAME` (user_id, time_add, number_players, machine_id, matchmaking) VALUES (?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM `USERS`) AS bob)+1)";
+	var sql = "SELECT * FROM USER where user_id = ?; INSERT INTO `GAME` (user_id, time_add, time_requested, machine_id, matchmaking, num_players, queue_pos) VALUES (?, ?, ?, ?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM GAME AS get_queue WHERE queue_pos > 0 AND machine_id = ?) AS num_queue)+1); SELECT * FROM GAME WHERE game_id = last_insert_id();";
+	
+	
+	
+	var inserts = [user_id, user_id, time_add, time_requested_ds, machine_id, matchmaking, num_players, machine_id];
+	sql = SQL.format(sql, inserts);
+
+	connection.query(sql, (err, result) => {
+		if(err) {
+			next(err);
+		}
+		else {
+			
+			console.log(result);
+			//// CHECK THE SESSION COOKIE
+
+			// Send 200 status back
+			console.log(result[1]);
+			//response.sendStatus(200);
+			response.json({game:[result[1][0]]});
+			console.log("POST /queue/add: Added user to queue");
+		}
+	});
+})
+
+// Add a new machine to a specific venue.
+app.post('/machine/add', (request, response, next) => {
+
+	var venue_id = parseInt(request.body.venue_id);
+	var category = request.body.category;
+	var base_price = parseInt(request.body.base_price);
+
+	// Check whether category exists yet for that venue.
+	var query = (SAN
+			`SELECT  machine_id FROM MACHINE
+			WHERE venue_id=${venue_id}
+			AND category=${category};`
+			);
+
+	// TESTING
+	connection.query(query, (err, result) => {
+		if (err) {
+			next(err);
+		}
+		else {
+			//response.sendStatus(200);
+			// If category doesn't exist yet, make a queue for it.
+			if (result.length == 0) {
+				var query2 = (SAN
+					`INSERT INTO QUEUE(venue_id, category)
+					VALUES(${venue_id}, ${category});`
+				);
+
+				connection.query(query2, (err2, result2) => {
+					if (err2) {
+						next(err2);
+					}
+					else {
+						console.log("POST /machine/add: Added new queue.");
+					}
+				})
+			}
+
+			// Make new machine record.
+			var query2 = (SAN
+				`INSERT INTO
+					MACHINE(venue_id, category, base_price, current_price)
+					VALUES(${venue_id}, ${category}, ${base_price}, ${base_price});`
+			);
+
+			connection.query(query2, (err2, result2) => {
+				if (err2) {
+					next(err2);
+				}
+				else {
+					query3 = (SAN
+              					`SELECT machine_id FROM MACHINE
+                                        			WHERE machine_id=last_insert_id();`
+                        		);
+
+                        		connection.query(query3, (err3, result3) => {
+                                		if (err3) {
+                                		        next(err3);
+                                		}
+                                		else {
+                                		        response.json({Machine:result3});
+                                			console.log("POST /machine/add: Added new machine");
+						}
+                        		})
+				}
+			})
+
+		}
+	});
+
+
+
+
+
+//	var sql = "INSERT INTO `MACHINE` (venue_id, category, base_price, current_price) VALUES (?,?,?,?);"
+//	var inserts = [venue_id, category, base_price, base_price]
+//	sql = SQL.format(sql, inserts);
+
+//	connection.query(sql, (err, result) => {
+//		if(err) {
+//			next(err);
+//		}
+//		else {
+//
+//			// Now get machine_id of the machine that was just added
+//			var sql = "SELECT * FROM MACHINE WHERE machine_id=last_insert_id();"
+//			
+//			connection.query(sql, (err, result2) => {
+//				if(err) {
+//					next(err);
+//				}
+//				else {
+//					// Send 200 status back
+//					//response.sendStatus(200);
+//					response.json({Machine:result2});
+//					//response.send(result2)
+//					console.log("POST /machine/add: Added new machine");
+//				}
+//			})
+//		}
+//	});
+
+})
+
+
+///////////////////////////////////////////////// PUT REQUESTS
+
+// Update statistics of an existing machine
+app.put('/machine/edit', (request, response, next) => {
+
+	var machine_id = parseInt(request.body.machine_id);
+	var venue_id = parseInt(request.body.venue_id);
+	var total = parseInt(request.body.total);
+	var base_price = parseFloat(request.body.base_price);
+
+	// Base sql
+	var sql = "UPDATE MACHINE SET"
+
+	if(total != 0) {
+		sql += " total = " + connection.escape(total) + ", available = " + connection.escape(total)
+		//sql = SQL.format(sql, total, total);
+
+		if(base_price != 0) {
+			sql += ", "
+		}
+
+	}
+	if(base_price != 0) {
+		sql += " base_price = " + connection.escape(base_price) + ", current_price = " + connection.escape(base_price)
+		sql = SQL.format(sql, base_price)
+	}
+	
+	sql += " WHERE machine_id = ?;";
+	
+	//var inserts = [total, total, base_price, base_price, machine_id]
+	sql = SQL.format(sql, machine_id);
+
+	console.log("MEME")
+	console.log(sql);
+
+	connection.query(sql, (err, result) => {
+		if(err) {
+			next(err);
+		}
+		else {
+			// Send 200 status back
+			response.sendStatus(200);
+			console.log("PUT /machine/edit: Update machine");
+		}
+	});
+
+
+})
+
+
+// Confirm the presence of a user/start the game.
+app.put('/queue/gameStart', (request, response, next) => {
+
+	var user_id = parseInt(request.body.user_id);
+	var game_id = parseInt(request.body.game_id);
+	
+	var sql = "UPDATE GAME SET queue_pos = 0, time_start = ? WHERE game_id = ?;"
+	var time_start = new Date();
+	var inserts = [time_start, game_id];
+
+	// SHUFFLE QUEUE UP
+	sql = SQL.format(sql, inserts);
+
+	connection.query(sql, (err, result) => {
+		if(err) {
+			next(err);
+		}
+		else {
+			// Send 200 status back
+			response.sendStatus(200);
+			console.log("POST /queue/gameStart: Started GAME");
+		}
+	});
+})
+
+// Confirm game end.
+app.put('/queue/gameEnd', (request, response, next) => {
+
+	var machine_id = parseInt(request.body.machine_id);
+	var game_id = parseInt(request.body.game_id);
+	var user_id = parseInt(request.body.user_id);
+	
+	//var sql = "UPDATE GAME SET queue_pos = -1 WHERE game_id = ?;"
+	var sql = "UPDATE `GAME` SET `queue_pos` = `queue_pos` -1 WHERE `queue_pos` != '-1' AND `machine_id` = ?; UPDATE `GAME` SET `time_end` = ? WHERE `game_id` = ?; SELECT device_id FROM `USER` WHERE user_id = (SELECT user_id FROM `GAME` AS bob WHERE queue_pos = 0 AND machine_id = ?);"
+	var inserts = [machine_id, new Date(), game_id, machine_id];
+	sql = SQL.format(sql, inserts);
+	// WILL NEED TO INCREASE NUMBER AVAILABLE MACHINE
+	//
+
+	// SHUFFLE QUEUE UP
+	var inserts = [game_id];
+	sql = SQL.format(sql, inserts);
+
+	connection.query(sql, (err, result) => {
+		if(err) {
+			next(err);
+		}
+		else {
+			// Send 200 status back
+
+			//console.log(result[2]);
+			var resuu = result[2][0].device_id;
+
+
+			var FCM = require('fcm-push');
+
+			var serverKey = 'AAAA7qf1S-s:APA91bHj07GD0akUObgNBy8VnF2HGjrgZ5OJRtaBTmK3yTS_aYQV3vnlbE75laH3GOcg_FTwe2aYosIFC3mXDkFUxTO4N-yJe2Zda31uQUyxod73FGSPBFUIF_7uzDIQ34IiCi_kGewV';
+			var fcm = new FCM(serverKey);
+
+			var message = {
+				to: result[2][0].device_id, // required fill with device token or topics
+				notification: {
+					title: 'Traintracks',
+					body: 'This app sucks. Download the official TrainLine app.'
+				}
+			};
+
+			//callback style
+			fcm.send(message, function(err, response){
+				if (err) {
+					console.log("Something has gone wrong!");
+				} else {
+					console.log("Successfully sent with response: ", response);
+				}
+			});
+
+
+			response.sendStatus(200);
+			console.log("POST /queue/gameEND: Ended GAME");
+		}
+	});
+})
+
+// Update users device
+app.put('/user/deviceid', (request, response, next) => {
+
+	var user_id = parseInt(request.body.user_id);
+	var device_id = request.body.device_id;
+
+	var sql = "UPDATE USER SET device_id = ? WHERE user_id = ?"
+	var inserts = [device_id, user_id];
+
+	connection.query(sql, (err, result) => {
+
+		if(err) {
+			next(err);
+		}
+		else {
+			response.sendStatus(200);
+			console.log("POST /user/deviceid: Updated device ID for user " + user_id)
+		}
+
+	})
+
+})
+
+
+///////////////////////////////////////////////// MISC
+
+var auth = function (req, res, next) {
+  var user = basicAuth(req);
+  if (!user || !user.name || !user.pass) {
+    res.set('WWW-Authenticate', 'Basic realm="This pages requires logging in to access"');
+    res.sendStatus(401);
+    return;
+  }
+  if (user.name === 'idk' && user.pass === 'blockchain') {
+    next();
+  } else {
+    res.set('WWW-Authenticate', 'Basic realm="This pages requires logging in to access"');
+    res.sendStatus(401);
+    return;
+  }
+}
+
+app.all("/config*", auth);
+
+app.get("/config", function (req, res) {
+	res.send("CONFIG PAGE FOR THE SERVER/DATABASE");
+	console.log("GET: Served dummy authentication page");
+});
+
+app.get("/config/stats", function (req, res) {
+	res.send("CONFIG PAGE FOR STATS");
+	console.log("GET: Served dummy stats page");
+});
+
+// Start listening on the current port
+app.listen(port, (err) => {
+	if(err) {
+		return console.log('Something bad happened: ', err);
+	}
+
+	console.log("Server started. Now listening on port " + port);
+// Error handling
+app.use(function(error, request, response, next) {
+    console.log("Error handler: ", error.message);
+	
+	console.log(error);
+    // Send an error message to the user.
+	response.status(500).send(error.message);
+
+});
+
+https.createServer(options, app).listen(443);
