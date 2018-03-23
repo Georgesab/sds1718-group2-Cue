@@ -179,6 +179,7 @@ function getAvailableMachines(queue_id, next, callback) {
 			next(err);
 		}
 		else {
+
 			if (result.length == 0) {
 				callback(null, {"available":"None"});
 			} else {
@@ -249,7 +250,6 @@ function getQueueStatus(queue_id, next, callback) {
 	})
 } 
 
-
 // Calculate a user's position within a particular queue.
 function getQueuePosition(user_id, queue_id, next, callback) {
 	
@@ -296,43 +296,41 @@ function getUserQueueStatus(user_id, queue_id, next, callback) {
 	
 	getAvgGameDuration(queue_id, next, (err, dur_result) => {
 
-        var dur = dur_result.dur;
+		var dur = dur_result.dur;
 
-        if (dur == -1) {
-            callback(null, {"wait":-1});
-        } else {
-            getQueuePosition(user_id, queue_id, next, (err, position_result) => {
+        	if (dur == -1) {
+			callback(null, {"wait":-1});
+        	} else {
+			getQueuePosition(user_id, queue_id, next, (err, position_result) => {
 
-            	var position = position_result.position;
+				var position = position_result.position;
 
-            	if (position == -1) {
-        
- 	               callback(null, {"wait":-1});
+				if (position == -1) {
+					callback(null, {"wait":-1});
 				} 
 				else if (position == 0) {
-				
+					
 					var machine_id = position_result.machine_id;
-
+	
 					callback(null, {"wait":0, "position":0, "machine_id":machine_id});
-    	        } else {
-                                        
-        	        getNumMachines(queue_id, next, (err, num_result) => {
+    			        } else {
+        	                                
+        			        getNumMachines(queue_id, next, (err, num_result) => {
 
-        		        var num = num_result.num_machines;
-
-                		if (num == -1) {
-                    		callback(null, {"wait":-1});
-               			} else {
-                    		var wait = Math.round((dur * position) / num);
-                    		callback(null, {"wait":wait, "position":position});
+						var num = num_result.num_machines;
+	               		
+						if (num == -1) {
+                	  				callback(null, {"wait":-1});
+						} else {
+                    					var wait = Math.round((dur * position) / num);
+                    					callback(null, {"wait":wait, "position":position});
+                				}
+           				})
                 		}
-           			})
-                }
-            })
-        }
-    })	
+ 			})
+		}
+	})	
 }
-
 
 // Work out which - if any - queue a user is in.
 function getUserQueue(user_id, next, callback) {
@@ -394,10 +392,9 @@ function prepareGame(game_id, machine_id, user_id, next, callback) {
 	
 	var query_game = (SAN
 		`UPDATE GAME
-			SET machine_id=${machine_id} AND state=2
+			SET machine_id=${machine_id}, state=2
 			WHERE game_id=${game_id};`
 	);
-
 
 	var query_machine = (SAN
 		`UPDATE MACHINE
@@ -461,6 +458,7 @@ function prepareGame(game_id, machine_id, user_id, next, callback) {
            								     }
         								});
 
+									callback(null);
 								}
 							})
 						}
@@ -1179,11 +1177,9 @@ app.post('/game/start', (request, response, next) => {
 							}
 						})
 					} else if (legit_result.Message==="wrong machine") {
-						//response.sendStatus(400);
 						response.json({"Start":"error, wrong machine"});
 						console.log("POST /game/start: User " + user_id + " failed to start game.");
 					} else {
-						//response.sendStatus(400);
 						response.json({"Start":"error, no game to start"});
 						console.log("POST /game/start: User " + user_id + " failed to start game.");
 					}
@@ -1191,11 +1187,199 @@ app.post('/game/start', (request, response, next) => {
 			})
 		} else {
 			console.log("POST /queue/join: Authentication Failed");
-                        response.status(401);
-                        response.json({"Authentication":[{auth:0}]});
+                        response.sendStatus(401);
 		}
 	})
 })
+
+
+/* END GAME STUFF ----------------------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------------------------------------*/
+
+// Check if the ending of the game is valid.
+function authenticateGameEnd(user_id, session_cookie, next, callback) {
+	
+	var query = (SAN
+		`SELECT game_id, machine_id FROM GAME
+			WHERE user_id=${user_id}
+			AND (state=3 OR state=4);
+		`
+
+	);
+
+	authentication(user_id, session_cookie, next, (err_auth, result_auth) => {
+		if (result_auth.auth==1) {
+			connection.query(query, (err_check, result_check) => {
+				if (err_check){
+					next(err_check);
+				} else {
+					if (result_check.length==1) {
+						var game_id = result_check[0].game_id;
+						var machine_id = result_check[0].machine_id;
+
+						callback(null, {"auth":1, "game_id":game_id, "machine_id":machine_id});
+					} else {
+						callback(null, {"auth":0});
+						console.log("User " + user_id + " failed to end game.");
+					}
+				}
+			})	
+		} else {
+			callback(null, result_auth);
+		}
+	})
+}
+
+
+// Make appropriate changes to database to signal end of a game.
+function wrapUpGame(game_id, machine_id, next, callback) {
+	
+	var time = new Date();
+
+	var query_game = (SAN
+		`UPDATE GAME
+			SET state=5, time_end=${time}
+			WHERE game_id=${game_id};`
+	);
+
+	var query_machine = (SAN
+		`UPDATE MACHINE
+			SET available=1
+			WHERE machine_id=${machine_id};`
+	);
+
+	connection.query(query_game, (err_game, result_game) => {
+		
+		if (err_game) {
+			next(err_game);
+		} else {
+			connection.query(query_machine, (err_machine, result_machine) => {
+				
+				if (err_machine) {
+					next(err_machine);
+				} else {
+					callback(null);
+				}
+			})
+		}
+	})
+}
+
+// Inform all users in a queue of the updates to their position.
+function updateUsersInQueue(game_id, machine_id, next, callback) {
+	
+	var query_users = (SAN
+		`SELECT U.user_id, U.device_id, G.game_id, G.wait_id FROM
+			GAME G INNER JOIN USER U
+				ON G.user_id=U.user_id
+			WHERE state=1
+			AND wait_id IN
+				(SELECT wait_id FROM GAME WHERE game_id=160)
+			ORDER BY time_add ASC;`);
+
+	connection.query(query_users, (err_users, result_users) => {
+	
+		if (err_users) {
+			next(err_users);
+		} else {
+			// If there's at least one person in the queue, let them know it's their turn.
+			if (result_users.length > 1) {
+				var game_id = result_users[0].game_id;
+				var user_id = result_users[0].user_id;
+
+				prepareGame(game_id, machine_id, user_id, next, (err_prep, result_prep) => {
+					
+					if (err_prep) {
+						next(err_prep);
+					} else {
+						// If that's all the players in the queue, stop there.
+						if (result_users.length == 1) {
+							callback(null, {"notified":1});
+						} else {
+						// If there are more, however:
+							var queue_id = result_users[0].wait_id;
+
+			                        	async.forEachOf(result_users, function (dataElement, i, inner_callback) {
+								
+								console.log("i="+i);
+
+								if (i!=0){
+									getUserQueueStatus(dataElement['user_id'], queue_id, next, (err_stat, result_stat) => {
+										
+										var pos = result_stat.position;
+										var wait = result_stat.wait;
+										var device = result_users[i].device_id;
+										
+										// Form notification.
+										var update_message = {
+                									to: device, 
+                        								data: {
+                                								title: 'Cue.',
+                                								body: 'Your position has changed to: ' + pos,
+                                								position: pos,
+												wait_time: wait,
+                                								type: 'update'
+											}
+        									};
+
+										// Send notification.
+										fcm.send(ready_message, function(err, response){
+                									if (err) {
+                        									console.log("Something has gone wrong!");
+                									} else {
+                        									inner_callback();
+                									}
+       										});
+									})
+								}
+                        				}, function(err_loop) {
+
+                                				if(err_loop) {
+                                        				next(err_loop);
+                                				} else {
+                                        				callback(null, {"notified":result_users.length});
+                                				}
+                        				});
+
+						}
+					}
+				})
+			} else {
+				callback(null, {"notified":0});
+			}
+		}
+	});
+}
+
+
+// End a game.
+app.post('/game/end', (request, response, next) => {
+	
+	var user_id = parseInt(request.body.user_id);
+	var session_cookie = request.body.session_cookie;
+
+	// Authenticate user and verify endpoint call.
+	authenticateGameEnd(user_id, session_cookie, next, (err_auth, result_auth) => {
+		if (result_auth.auth==1) {
+			
+			// Update database.
+			var game_id = result_auth.game_id;
+			var machine_id = result_auth.machine_id;
+			
+			wrapUpGame(game_id, machine_id, next, (err_wrap, result_wrap) => {
+				
+				// Update any other users in the queue.
+				updateUsersInQueue(game_id, machine_id, next, (err_notify, result_notify) => {
+					response.json({"Game End":"ok"});
+					console.log("POST /game/end: Ended game " + game_id + ", updated " + result_notify.notified + " users.");
+				})
+			})
+		} else {
+			response.sendStatus(401);
+		}
+	})
+})
+
 
 /* JOIN QUEUE STUFF --------------------------------------------------------------------------------------------------------
 --------------------------------------------------------------------------------------------------------------------------*/
@@ -1211,7 +1395,6 @@ function authenticateQueueJoin(user_id, session_cookie, next, callback) {
         	    	next(err_queue);
                	}
 				else if (result_queue.Queue==="None") {
-					console.log("Authenticated!");
 					callback(null, result_auth);
 				} else {
 					callback(null, {"auth":0});
@@ -1233,21 +1416,23 @@ function recceQueueJoin(machine_id, next, callback) {
 			WHERE machine_id=${machine_id};`
 	);
 
-	var query2 = (SAN	
-		`SELECT venue_name FROM VENUE
-			WHERE venue_id=${venue_id}`
-	);
-
 	connection.query(query1, (err1, result1) => {
 		
 		if (err1) {	
 			next(err1);
 		} else {
+
+			var venue_id=result1[0].venue_id;
+		
+			var query2 = (SAN
+                		`SELECT venue_name FROM VENUE
+                        	WHERE venue_id=${venue_id}`
+        		);
+
 			connection.query(query2, (err2, result2) => {
 				if(err2) {
 					next(err2);
 				} else {
-					console.log("Recce complete!");
 					callback(null, {"queue_id":result1[0].queue_id,
 									"category":result1[0].category,
 									"venue_id":result1[0].venue_id,
@@ -1276,7 +1461,7 @@ function addToQueue(queue_id, current_price, user_id, num_players, match_req, ne
 	var query_id = (SAN
 		`SELECT game_id FROM GAME
 			WHERE user_id=${user_id}
-			AND time_add=${time_add};`
+			AND state=1;`
 	);
 
 	// Insert new record.
@@ -1284,13 +1469,12 @@ function addToQueue(queue_id, current_price, user_id, num_players, match_req, ne
 		if (err){
 			next(err);
 		} else {
-			console.log("Inserted!");
+
 			// Find ID of new record.
 			connection.query(query_id, (err_id, result_id) => {
 				if (err_id) {
 					next(err_id);
 				} else {
-					console.log("Retrieved!");
 					callback(null, {"game_id":result_id[0].game_id});
 				}
 			})
@@ -1299,13 +1483,13 @@ function addToQueue(queue_id, current_price, user_id, num_players, match_req, ne
 }
 
 
-app.post('/queue/join2', (request, response, next) => {
+app.post('/queue/join', (request, response, next) => {
 
 	var user_id = parseInt(request.body.user_id);
-	var machine_id = parseInt(request.body.user_id);
+	var machine_id = parseInt(request.body.machine_id);
 	var session_cookie = request.body.session_cookie;
 
-	var match_required = 0;		// For later use.
+	var match_req = 0;		// For later use.
 	var num_players = 2;		// For later use.
 
 	// Authenticate and check if user is already in queue.
@@ -1317,6 +1501,7 @@ app.post('/queue/join2', (request, response, next) => {
 			recceQueueJoin(machine_id, next, (err_recce, result_recce) => {
 
 				var current_price = result_recce.current_price;
+				var queue_id = result_recce.queue_id;
 
 				// Create new game record.
 				addToQueue(queue_id, current_price, user_id, num_players, match_req, next, (err_add, result_add) => {
@@ -1325,168 +1510,62 @@ app.post('/queue/join2', (request, response, next) => {
 					var request=require('request');
 					var addr = result_recce.hub_addr;
     
-                    request(addr, function(err_fb, res_fb, body) {
-                    	if(err_fb) {
-                       		next(err_fb);
-                    	} else {
+        			   	request(addr, function(err_fb, res_fb, body) {
+                    				if(err_fb) {
+                       					next(err_fb);
+                    				} else {
 							console.log("BEEP DA BOOP");
 						}
 
 						// Check if new game is ready immediately.
 						getUserQueueStatus(user_id, queue_id, next, (err_status, result_status) => {
                     	    
-                    	    // If the game is ready immediately, set it up!
+                    	    				// If the game is ready immediately, set it up!
 							if (result_status.position==0) {
 
 								var machine_id = result_status.machine_id;
 								var game_id = result_add.game_id;
-
+								
 								prepareGame(game_id, machine_id, user_id, next, (err_prep, result_prep) => {
 									response.json({
 										"Queue":{
-                            				"queue_id":result_recce.queue_id,
-                            				"category":result_recce.category,
-                            				"venue_id":result_recce.venue_id,
-                            				"venue_name":result_recce.venue_name,
-                           					"queue_pos":0,
-                            				"wait_time":0
-                            			}
-                            		});
+                            								"queue_id":result_recce.queue_id,
+                            								"category":result_recce.category,
+                            								"venue_id":result_recce.venue_id,
+                            								"venue_name":result_recce.venue_name,
+                           								"queue_pos":0,
+                            								"wait_time":0
+                            							}
+                            						});
 
-   	                            	console.log("POST /queue/join: User " + user_id + " joined empty queue " + queue_id + ".");
+   	                            					console.log("POST /queue/join: User " + user_id + " joined empty queue " + queue_id + ".");
 								})
 							} else {
 								response.json({
-										"Queue":{
-                            				"queue_id":result_recce.queue_id,
-                            				"category":result_recce.category,
-                            				"venue_id":result_recce.venue_id,
-                            				"venue_name":result_recce.venue_name,
-                           					"queue_pos":result_status.position,
-                            				"wait_time":result_status.wait
-                            			}
-                           		 });
+									"Queue":{
+                            							"queue_id":result_recce.queue_id,
+                            							"category":result_recce.category,
+                            							"venue_id":result_recce.venue_id,
+                            							"venue_name":result_recce.venue_name,
+                           							"queue_pos":result_status.position,
+                            							"wait_time":result_status.wait
+                            						}
+                           					});
 
-                            	console.log("POST /queue/join: User " + user_id + " joined queue " + queue_id + ".");
+                            					console.log("POST /queue/join: User " + user_id + " joined queue " + queue_id + ".");
 							}
-                    	})
-                    })
+                    				})
+                    			})
 				})
 			})
 		} else {
 			console.log("POST /queue/join: Authentication Failed");
-            response.status(401);
-            response.json({"Authentication":[{auth:0}]});
+            		response.status(401);
+            		response.json({"Authentication":[{auth:0}]});
 		}
 	})
 })
 
-
-
-
-
-// Allows a user to join the queue. Replaces /queue/add in conjunction with queue/book.
-app.post('/queue/join', (request, response, next) => {
-
-	// Parse request parameters.
-	var user_id = parseInt(request.body.user_id);
-	var machine_id = parseInt(request.body.machine_id);
-	var session_cookie = request.body.session_cookie;
-
-	var match_required = 0;		// For later use.
-	var num_players = 2; 		// For later use.
-
-	var time_add = new Date();
-
-	// Authenticate.
-	authentication(user_id, session_cookie, next, (auth_err, auth_result) => {
-
-		if(auth_result.auth == 1) {
-			
-			// Check if the user is already in a queue - joining more than one isn't allowed.
-			getUserQueue(user_id, next, (err_queue, result_queue) => {
-
-		                if (err_queue) {
-        		                next(err_queue);
-                		}
-				else if (result_queue.Queue==="None") {
-
-					// Find the appropriate queue for the user to join.
-					var query_find = (SAN
-	                                        `SELECT queue_id, QUEUE.venue_id, venue_name, QUEUE.category FROM
-                                                	QUEUE LEFT JOIN VENUE
-                                                        	ON VENUE.venue_id=QUEUE.venue_id
-                                                       	WHERE (QUEUE.category, QUEUE.venue_id) IN
-                                                        	(SELECT category, venue_id FROM MACHINE
-                                                                	WHERE machine_id=${machine_id}
-                                                                );`
-                                    	);
-
-                                       	connection.query(query_find, (find_err, find_result) => {
-                                       		if (find_err) {
-                                                	next(find_err);
-                                                }
-                                                else {
-                                                    	var queue_id = find_result[0].queue_id;
-
-                                                        var query_newGame = (SAN
-                                                        	`INSERT INTO
-                                                                	GAME(user_id, state, time_add, wait_id)
-                                                                        VALUES(${user_id}, 1, ${time_add}, ${queue_id});`
-                                                   	);
-
-                                                        connection.query(query_newGame, (newGame_err, newGame_result) => {
-                                                                if (newGame_err) {
-                                                                        next(newGame_err);
-                                                                }
-                                                        	else {
-                                                                        // Send a beep beep to the Raspberry Pi
-                                                                        var request=require('request');
-
-                                       	                                request('https://adjuvant-persian-5410.dataplicity.io', function(err,res,body) {
-                               	                                                if(err) {
-
-                                                                                } else {
-											console.log("BEEP DA BOOP");
-										}
-                                                                     	});
-
-                                                                       	getUserQueueStatus(user_id, queue_id, next, (err_status, result_status) => {
-                                                                                 response.json({"Queue":{
-                                                                                                        "queue_id":find_result[0].queue_id,
-                                                                                                        "category":find_result[0].category,
-                                                                       	                                "venue_id":find_result[0].venue_id,
-                                                                                                      	"venue_name":find_result[0].venue_name,
-                                                                                                        "queue_pos":result_status.position,
-                                                                                                        "wait_time":result_status.wait
-                                                                                              	}});
-
-                                                                               	console.log("POST /queue/join: User " + user_id + " joined queue " + queue_id + ".");
-
-                                                                       	});
-                                                            	}
-							})
-						}
-					})	
-				}
-                		else {
-					response.status(400);
-                                        response.json({Error:"User already in queue."});
-                                        console.log("POST /queue/join: User " + user_id + " failed to join queue.");
-				}
-			})
-		}
-		// In event of authentication failure:
-		else {
-			console.log("POST /queue/join: Authentication Failed");
-                        response.status(401);
-                        response.json({"Authentication":[{auth:0}]});
-		}
-	});
-})
-
-/* END: JOIN QUEUE STUFF --------------------------------------------------------------------------------------------------
---------------------------------------------------------------------------------------------------------------------------*/ 
 
 // Allow a user to leave whichever queue they're in.
 app.post("/queue/leave", (request, response, next) => {
@@ -1532,66 +1611,6 @@ app.post("/queue/leave", (request, response, next) => {
 	});
 })
 
-
-
-// Add a user to the queue — i.e. a user wants to play a game.
-app.post('/queue/add', (request, response, next) => {
-
-	var user_id = parseInt(request.body.user_id);
-	var machine_id = parseInt(request.body.machine_id);
-
-	console.log("MACHINE ID: " + machine_id);
-	
-	var matchmaking = 0// Use this later
-	var num_players = 2// Use this later
-
-	var time_add;
-	var time_requested = parseInt(request.body.time_requested);
-	var session_cookie = request.body.session_cookie;
-
-	time_add = new Date();
-	var time_requested_ds;
-	
-	
-	if(time_requested == 0) {
-		time_requested_ds = time_add;
-	}
-	else {
-		time_requested_ds = new Date(time_requested * 1000);
-	}
-
-	var queue_add_query = "SELECT * FROM USER where user_id = ?; INSERT INTO `GAME` (user_id, time_add, time_requested, machine_id, matchmaking, num_players, queue_pos) VALUES (?, ?, ?, ?, ?, ?, (SELECT max(queue_pos) FROM (SELECT * FROM GAME AS get_queue WHERE queue_pos > 0 AND machine_id = ?) AS num_queue)+1); SELECT * FROM GAME WHERE game_id = last_insert_id();";	
-	var inserts = [user_id, user_id, time_add, time_requested_ds, machine_id, matchmaking, num_players, machine_id];
-	queue_add_query = SQL.format(queue_add_query, inserts);
-
-	authentication(user_id, session_cookie, next, (err, auth_result) => {
-
-		if(auth_result.auth == 1) {
-
-			connection.query(queue_add_query, (err, queue_add_result) => {
-				if(err) {
-					next(err);
-				}
-				else {
-
-					console.log(queue_add_result);
-					//// CHECK THE SESSION COOKIE
-
-					// Send 200 status back
-					console.log(queue_add_result[1]);
-					response.json({"Game":[queue_add_result[2][0]]});
-					console.log("POST /queue/add: Added user to queue");
-				}
-			});
-
-		}
-		else {
-			console.log("POST /queue/add: Authentication Failed");
-			response.status(401);
-			response.json({"Authentication":[{auth:0}]});
-		}
-	});
-})
 
 // Add a new machine to a specific venue.
 app.post('/machine/add', (request, response, next) => {
@@ -1696,30 +1715,6 @@ app.post('/machine/add', (request, response, next) => {
 		}
 	});
 })
-/*
-// Remove a particular machine from a venue.
-app.post('/machine/remove', (request, response, next) => {
-
-        var machine_id = parseInt(request.body.user_id);
-
-        var user_id = parseInt(request.body.user_id);
-        var session_cookie = request.body.session_cookie;
-
-
-	// Retrieve venue_id and category for the machine, for authentication.
-
-
-        // Check how many machines are in the queue.
-        var query = (SAN
-                        `SELECT num_machines FROM QUEUE
-                                WHERE venue_id=${venue_id}
-                                AND category=${category};`
-        );
-
-        authentication_admin(user_id, session_cookie, venue_id, next, (err, auth_result) => {
-
-                if(auth_result.auth == 1) {
-*/
 
 
 ///////////////////////////////////////////////// MISC REQUESTS
@@ -1868,32 +1863,6 @@ app.put('/machine/edit/price', (request, response, next) => {
 })
 
 
-// Confirm the presence of a user/start the game.
-app.put('/queue/gameStart', (request, response, next) => {
-
-	var user_id = parseInt(request.body.user_id);
-	var game_id = parseInt(request.body.game_id);
-	
-	var sql = "UPDATE GAME SET queue_pos = 0, time_start = ? WHERE game_id = ?;"
-	var time_start = new Date();
-	var inserts = [time_start, game_id];
-
-	// SHUFFLE QUEUE UP
-	sql = SQL.format(sql, inserts);
-
-	connection.query(sql, (err, result) => {
-		if(err) {
-			next(err);
-		}
-		else {
-			// Send 200 status back
-			response.sendStatus(200);
-			console.log("POST /queue/gameStart: Started GAME");
-		}
-	});
-})
-
-
 // REMOVE THIS WHEN CODE MOVED ELSEWHERE
 app.get('/notification/test', (request, response, next) => {
 
@@ -1933,6 +1902,7 @@ app.get('/notification/test', (request, response, next) => {
 	response.send(200);
 
 })
+
 
 // Confirm game end.
 app.put('/queue/gameEnd', (request, response, next) => {

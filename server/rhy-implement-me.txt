@@ -1,1 +1,0 @@
-SELECT G.user_id, U.name, U.username, G.machine_id, M.category, M.base_price, G.game_id, G.time_add, G.time_start, G.time_end  FROM GAME G INNER JOIN MACHINE M ON G.machine_id=M.machine_id INNER JOIN USER U ON G.user_id=U.user_id WHERE M.venue_id = ?;
