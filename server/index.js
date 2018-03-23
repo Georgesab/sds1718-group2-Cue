@@ -1177,11 +1177,9 @@ app.post('/game/start', (request, response, next) => {
 							}
 						})
 					} else if (legit_result.Message==="wrong machine") {
-						//response.sendStatus(400);
 						response.json({"Start":"error, wrong machine"});
 						console.log("POST /game/start: User " + user_id + " failed to start game.");
 					} else {
-						//response.sendStatus(400);
 						response.json({"Start":"error, no game to start"});
 						console.log("POST /game/start: User " + user_id + " failed to start game.");
 					}
@@ -1189,17 +1187,199 @@ app.post('/game/start', (request, response, next) => {
 			})
 		} else {
 			console.log("POST /queue/join: Authentication Failed");
-                        response.status(401);
-                        response.json({"Authentication":[{auth:0}]});
+                        response.sendStatus(401);
 		}
 	})
 })
 
 
+/* END GAME STUFF ----------------------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------------------------------------*/
+
+// Check if the ending of the game is valid.
+function authenticateGameEnd(user_id, session_cookie, next, callback) {
+	
+	var query = (SAN
+		`SELECT game_id, machine_id FROM GAME
+			WHERE user_id=${user_id}
+			AND (state=3 OR state=4);
+		`
+
+	);
+
+	authentication(user_id, session_cookie, next, (err_auth, result_auth) => {
+		if (result_auth.auth==1) {
+			connection.query(query, (err_check, result_check) => {
+				if (err_check){
+					next(err_check);
+				} else {
+					if (result_check.length==1) {
+						var game_id = result_check[0].game_id;
+						var machine_id = result_check[0].machine_id;
+
+						callback(null, {"auth":1, "game_id":game_id, "machine_id":machine_id});
+					} else {
+						callback(null, {"auth":0});
+						console.log("User " + user_id + " failed to end game.");
+					}
+				}
+			})	
+		} else {
+			callback(null, result_auth);
+		}
+	})
+}
+
+
+// Make appropriate changes to database to signal end of a game.
+function wrapUpGame(game_id, machine_id, next, callback) {
+	
+	var time = new Date();
+
+	var query_game = (SAN
+		`UPDATE GAME
+			SET state=5, time_end=${time}
+			WHERE game_id=${game_id};`
+	);
+
+	var query_machine = (SAN
+		`UPDATE MACHINE
+			SET available=1
+			WHERE machine_id=${machine_id};`
+	);
+
+	connection.query(query_game, (err_game, result_game) => {
+		
+		if (err_game) {
+			next(err_game);
+		} else {
+			connection.query(query_machine, (err_machine, result_machine) => {
+				
+				if (err_machine) {
+					next(err_machine);
+				} else {
+					callback(null);
+				}
+			})
+		}
+	})
+}
+
+// Inform all users in a queue of the updates to their position.
+function updateUsersInQueue(game_id, machine_id, next, callback) {
+	
+	var query_users = (SAN
+		`SELECT U.user_id, U.device_id, G.game_id, G.wait_id FROM
+			GAME G INNER JOIN USER U
+				ON G.user_id=U.user_id
+			WHERE state=1
+			AND wait_id IN
+				(SELECT wait_id FROM GAME WHERE game_id=160)
+			ORDER BY time_add ASC;`);
+
+	connection.query(query_users, (err_users, result_users) => {
+	
+		if (err_users) {
+			next(err_users);
+		} else {
+			// If there's at least one person in the queue, let them know it's their turn.
+			if (result_users.length > 1) {
+				var game_id = result_users[0].game_id;
+				var user_id = result_users[0].user_id;
+
+				prepareGame(game_id, machine_id, user_id, next, (err_prep, result_prep) => {
+					
+					if (err_prep) {
+						next(err_prep);
+					} else {
+						// If that's all the players in the queue, stop there.
+						if (result_users.length == 1) {
+							callback(null, {"notified":1});
+						} else {
+						// If there are more, however:
+							var queue_id = result_users[0].wait_id;
+
+			                        	async.forEachOf(result_users, function (dataElement, i, inner_callback) {
+								
+								console.log("i="+i);
+
+								if (i!=0){
+									getUserQueueStatus(dataElement['user_id'], queue_id, next, (err_stat, result_stat) => {
+										
+										var pos = result_stat.position;
+										var wait = result_stat.wait;
+										var device = result_users[i].device_id;
+										
+										// Form notification.
+										var update_message = {
+                									to: device, 
+                        								data: {
+                                								title: 'Cue.',
+                                								body: 'Your position has changed to: ' + pos,
+                                								position: pos,
+												wait_time: wait,
+                                								type: 'update'
+											}
+        									};
+
+										// Send notification.
+										fcm.send(ready_message, function(err, response){
+                									if (err) {
+                        									console.log("Something has gone wrong!");
+                									} else {
+                        									inner_callback();
+                									}
+       										});
+									})
+								}
+                        				}, function(err_loop) {
+
+                                				if(err_loop) {
+                                        				next(err_loop);
+                                				} else {
+                                        				callback(null, {"notified":result_users.length});
+                                				}
+                        				});
+
+						}
+					}
+				})
+			} else {
+				callback(null, {"notified":0});
+			}
+		}
+	});
+}
+
+
 // End a game.
 app.post('/game/end', (request, response, next) => {
+	
+	var user_id = parseInt(request.body.user_id);
+	var session_cookie = request.body.session_cookie;
 
+	// Authenticate user and verify endpoint call.
+	authenticateGameEnd(user_id, session_cookie, next, (err_auth, result_auth) => {
+		if (result_auth.auth==1) {
+			
+			// Update database.
+			var game_id = result_auth.game_id;
+			var machine_id = result_auth.machine_id;
+			
+			wrapUpGame(game_id, machine_id, next, (err_wrap, result_wrap) => {
+				
+				// Update any other users in the queue.
+				updateUsersInQueue(game_id, machine_id, next, (err_notify, result_notify) => {
+					response.json({"Game End":"ok"});
+					console.log("POST /game/end: Ended game " + game_id + ", updated " + result_notify.notified + " users.");
+				})
+			})
+		} else {
+			response.sendStatus(401);
+		}
+	})
 })
+
 
 /* JOIN QUEUE STUFF --------------------------------------------------------------------------------------------------------
 --------------------------------------------------------------------------------------------------------------------------*/
