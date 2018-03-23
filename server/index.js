@@ -181,7 +181,7 @@ function getAvailableMachines(queue_id, next, callback) {
 		else {
 
 			if (result.length == 0) {
-				callback(null, {"available":"None"});
+				callback(null, {"available":"none"});
 			} else {
 				callback(null, {"available":result});
 			}
@@ -253,38 +253,61 @@ function getQueueStatus(queue_id, next, callback) {
 // Calculate a user's position within a particular queue.
 function getQueuePosition(user_id, queue_id, next, callback) {
 	
+	var query_ready = (SAN
+		`SELECT game_id FROM GAME
+			WHERE state=2
+			AND user_id=${user_id}
+			AND wait_id=${queue_id};`
+	);
+			
 	var query = (SAN
 		`SELECT COUNT(game_id) AS num_in_front FROM GAME
-			WHERE state<3
+			WHERE state<2
 			AND user_id!=${user_id}
 			AND wait_id=${queue_id}
 			AND time_add<
 				(SELECT time_add from GAME
 					WHERE user_id=${user_id}
-					AND state<3
+					AND state<2
 					AND wait_id=${queue_id}
 				);`
 	);
 
-	connection.query(query, (err, result, fields) => {
+	connection.query(query_ready, (err, result, fields) => {
 		
 		if (err) {
 			console.log(err);
 			callback(null, {"position":-1});
 		} else {
-			var position = result[0].num_in_front + 1;
-	
-			if (position == 1) {
-				getAvailableMachines(queue_id, next, (err_machines, result_machines) => {
-					if (result.available==="none") {
-						callback(null, {"position":position});
+			if (result.length == 1) {
+				callback(null, {"position":0});
+			} else {
+				connection.query(query, (err, result, fields) => {
+		
+					if (err) {
+						console.log(err);
+						callback(null, {"position":-1});
 					} else {
-						var machine_id = result_machines.available[0].machine_id;
-						callback(null, {"position":0, "machine_id":machine_id});
+						var position = result[0].num_in_front + 1;
+	
+						if (position == 1) {
+					
+							getAvailableMachines(queue_id, next, (err_machines, result_machines) => {
+
+								if (result_machines.available==="none") {
+									console.log("No machines available!");
+									callback(null, {"position":position});
+								} else {
+									var machine_id = result_machines.available[0].machine_id;
+									console.log("Machine available!");
+									callback(null, {"position":0, "machine_id":machine_id});
+								}
+							})
+						} else {
+                        				callback(null, {"position":position});
+						}
 					}
 				})
-			} else {
-                        	callback(null, {"position":position});
 			}
 		}
 	})
@@ -604,7 +627,7 @@ function startGame(game_id, machine_id, next, callback) {
 
 app.get('/TEST', (request, response, next) => {
 		
-	isMachineAcceptable(84, 29, next, (err, result) => {
+	getQueuePosition(73, next, (err, result) => {
 		response.send(result);
 	})	
 
@@ -867,7 +890,7 @@ app.get("/venue/queues", (request, response, next) => {
 			next(err_num);
 		} else {
 			var queues = [];
-				async.forEachOf(result_num, function (dataElement, i, inner_callback) {
+			async.forEachOf(result_num, function (dataElement, i, inner_callback) {
 					
 				getQueueDetails(dataElement['queue_id'], next, (err, result_det) => {
 					queues[i] = result_det;
@@ -1299,9 +1322,8 @@ function updateUsersInQueue(game_id, machine_id, next, callback) {
 			next(err_users);
 		} else {
 
-			console.log(result_users);
 			// If there's at least one person in the queue, let them know it's their turn.
-			if (result_users.length > 1) {
+			if (result_users.length >= 1) {
 				var game_id = result_users[0].game_id;
 				var user_id = result_users[0].user_id;
 
@@ -1319,8 +1341,6 @@ function updateUsersInQueue(game_id, machine_id, next, callback) {
 
 			                        	async.forEachOf(result_users, function (dataElement, i, inner_callback) {
 								
-								console.log("i="+i);
-
 								if (i!=0){
 									getUserQueueStatus(dataElement['user_id'], queue_id, next, (err_stat, result_stat) => {
 										
@@ -1341,14 +1361,15 @@ function updateUsersInQueue(game_id, machine_id, next, callback) {
         									};
 
 										// Send notification.
-										fcm.send(ready_message, function(err, response){
+										fcm.send(update_message, function(err, response){
                 									if (err) {
                         									console.log("Something has gone wrong!");
-                									} else {
-                        									inner_callback();
                 									}
+											inner_callback();
        										});
 									})
+								} else {
+									inner_callback();
 								}
                         				}, function(err_loop) {
 
