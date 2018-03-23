@@ -1290,7 +1290,7 @@ function updateUsersInQueue(game_id, machine_id, next, callback) {
 				ON G.user_id=U.user_id
 			WHERE state=1
 			AND wait_id IN
-				(SELECT wait_id FROM GAME WHERE game_id=160)
+				(SELECT wait_id FROM GAME WHERE game_id=${game_id})
 			ORDER BY time_add ASC;`);
 
 	connection.query(query_users, (err_users, result_users) => {
@@ -1298,6 +1298,8 @@ function updateUsersInQueue(game_id, machine_id, next, callback) {
 		if (err_users) {
 			next(err_users);
 		} else {
+
+			console.log(result_users);
 			// If there's at least one person in the queue, let them know it's their turn.
 			if (result_users.length > 1) {
 				var game_id = result_users[0].game_id;
