@@ -474,10 +474,11 @@ function prepareGame(game_id, machine_id, user_id, next, callback) {
 function isMachineAcceptable(machine_id, queue_id, next, callback) {
 	
 	var query = (SAN
-		`SELECT machine_id 
+		`SELECT machine_id  
 			FROM QUEUE Q RIGHT JOIN MACHINE M
 				ON Q.category=M.category AND Q.venue_id=M.venue_id
-			WHERE queue_id=${queue_id};`
+			WHERE queue_id=${queue_id}
+			AND available=1;`
 	);
 
 	connection.query(query, (err, result) => {
@@ -485,14 +486,18 @@ function isMachineAcceptable(machine_id, queue_id, next, callback) {
 		if (err) {
 			next(err);
 		} else {
+
+			var match = 0;
+
 			for (var i =0; i < result.length; i++) {
 				if (result[i].machine_id==machine_id) {
-					callback(null, {"Accepted":"Yes"});
+					match = 1;
+					break;
 				}
 			}
-			callback(null, {"Accepted":"No"});
-		}
 
+			match ? callback(null, {"Accepted":"yes"}) : callback(null, {"Accepted":"no"});
+		}
 	})
 }
 
@@ -500,15 +505,19 @@ function isMachineAcceptable(machine_id, queue_id, next, callback) {
 function authenticateGameStart(user_id, machine_id, next, callback) {
 	
 	var query = (SAN
-		`SELECT G.game_id, G.wait_id, M.machine_id, M.available 
+		`SELECT G.game_id, G.wait_id, M.machine_id 
 			FROM GAME G INNER JOIN MACHINE M 
 				ON G.machine_id=M.machine_id 
 			WHERE user_id=${user_id}
 			AND state=2;`
 	);
+
+	console.log("MACHINE_ID: "+ machine_id);
 	
 	connection.query(query, (err, result) => {
 		
+		console.log(result);
+
 		if (err) {
 			next(err);
 		} else {
@@ -517,15 +526,15 @@ function authenticateGameStart(user_id, machine_id, next, callback) {
 			} else if (result[0].machine_id == machine_id) {
 				var game_id = result[0].game_id;
 				callback(null, {"Authentication":"ok", "game_id":game_id});
-			} else if (result[0].available == 0) {
-				callback(null, {"Authentication":"error", "Message":"wrong machine"});
 			} else {
 				// If the user has tapped the wrong machine, but it's a free machine in the right category, it can still be used.
 				isMachineAcceptable(machine_id, result[0].wait_id, next, (err_acc, result_acc) => {
 					if (err_acc) {
 						next(err_acc);
 					} else {
-						if (result_acc.Accepted==="Yes") {
+
+						console.log(result_acc);
+						if (result_acc.Accepted==="yes") {
 							var game_id = result[0].game_id;
 
 							var query_update = (SAN
@@ -538,6 +547,7 @@ function authenticateGameStart(user_id, machine_id, next, callback) {
 								callback(null, {"Authentication":"ok", "game_id":game_id});
 							})
 						} else {
+							console.log("Machine failed acceptance test.");
 							callback(null, {"Authentication":"error", "Message":"wrong machine"});
 						}
 					}
@@ -1164,7 +1174,6 @@ app.post('/game/start', (request, response, next) => {
 							if (start_err) {
 								next(start_err);
 							} else {
-								response.sendStatus(200);
 								response.json({"Start":"ok"});
 								console.log("POST /game/start: User " + user_id + " started game " + game_id);
 							}
