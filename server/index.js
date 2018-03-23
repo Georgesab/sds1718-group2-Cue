@@ -511,8 +511,6 @@ function authenticateGameStart(user_id, machine_id, next, callback) {
 			WHERE user_id=${user_id}
 			AND state=2;`
 	);
-
-	console.log("MACHINE_ID: "+ machine_id);
 	
 	connection.query(query, (err, result) => {
 		
@@ -533,21 +531,37 @@ function authenticateGameStart(user_id, machine_id, next, callback) {
 						next(err_acc);
 					} else {
 
-						console.log(result_acc);
 						if (result_acc.Accepted==="yes") {
 							var game_id = result[0].game_id;
-
+		
 							var query_update = (SAN
 								`UPDATE GAME
 									SET machine_id=${machine_id}
 									WHERE game_id=${game_id};`
 							);
 
-							connection.query(query_update, (err, result_update) => {
-								callback(null, {"Authentication":"ok", "game_id":game_id});
+							var query_update2 = (SAN
+								`UPDATE MACHINE
+									SET available=1
+									WHERE machine_id=${result[0].machine_id};`
+							);
+
+							connection.query(query_update, (err_update, result_update) => {
+
+								if (err_update){
+									next(err_update);
+								} else {
+									connection.query(query_update2, (err_update, result_update) => {
+									
+										if (err_update) {
+											next(err_update);
+										} else {
+											callback(null, {"Authentication":"ok", "game_id":game_id});
+										}
+									})
+								}
 							})
 						} else {
-							console.log("Machine failed acceptance test.");
 							callback(null, {"Authentication":"error", "Message":"wrong machine"});
 						}
 					}
