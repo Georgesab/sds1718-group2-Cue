@@ -20,7 +20,7 @@ var options = {
 	ca: fs.readFileSync('/etc/letsencrypt/live/idk-cue.club/chain.pem')
 };
 
-/*
+
 // Database
 var SQL = require("mysql");
 var connection = SQL.createConnection({
@@ -30,7 +30,7 @@ var connection = SQL.createConnection({
 	multipleStatements: true,
 	database: 'SDS1'
 });
-*/
+
 
 var SAN = require("sql-template-strings");
 
@@ -580,17 +580,10 @@ function startGame(game_id, machine_id, next, callback) {
 
 app.get('/TEST', (request, response, next) => {
 		
-	getQueueStatus(36, next, (err, result) => {
-		
-		if (err) {
-			next(err);
-		} else {
-		
-			console.log("TESTING getQueuePosition");
-			response.send(result);
-		}
-	})
- 
+	isMachineAcceptable(84, 29, next, (err, result) => {
+		response.send(result);
+	})	
+
 })
 
 
